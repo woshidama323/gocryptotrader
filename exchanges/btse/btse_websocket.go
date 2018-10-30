@@ -24,16 +24,17 @@ const (
 // WebsocketSubscriber subscribes to websocket channels with respect to enabled
 // currencies
 func (b *BTSE) WebsocketSubscriber() error {
+	currencies := b.CurrencyPairs.Spot.Enabled.Strings()
 	subscribe := websocketSubscribe{
 		Type: "subscribe",
 		Channels: []websocketChannel{
 			{
 				Name:       "snapshot",
-				ProductIDs: b.EnabledPairs.Strings(),
+				ProductIDs: currencies,
 			},
 			{
 				Name:       "ticker",
-				ProductIDs: b.EnabledPairs.Strings(),
+				ProductIDs: currencies,
 			},
 		},
 	}

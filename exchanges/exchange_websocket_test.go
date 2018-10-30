@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/thrasher-/gocryptotrader/currency"
+	"github.com/thrasher-/gocryptotrader/exchanges/assets"
 	"github.com/thrasher-/gocryptotrader/exchanges/orderbook"
 )
 
@@ -156,7 +157,7 @@ func TestInsertingSnapShots(t *testing.T) {
 
 	snapShot1.Asks = asks
 	snapShot1.Bids = bids
-	snapShot1.AssetType = "SPOT"
+	snapShot1.AssetType = assets.AssetTypeSpot
 	snapShot1.Pair = currency.NewPairFromString("BTCUSD")
 
 	wsTest.Websocket.Orderbook.LoadSnapshot(&snapShot1, "ExchangeTest", false)
@@ -192,7 +193,7 @@ func TestInsertingSnapShots(t *testing.T) {
 
 	snapShot2.Asks = asks
 	snapShot2.Bids = bids
-	snapShot2.AssetType = "SPOT"
+	snapShot2.AssetType = assets.AssetTypeSpot
 	snapShot2.Pair = currency.NewPairFromString("LTCUSD")
 
 	wsTest.Websocket.Orderbook.LoadSnapshot(&snapShot2, "ExchangeTest", false)
@@ -261,7 +262,7 @@ func TestUpdate(t *testing.T) {
 		LTCUSDPAIR,
 		time.Now(),
 		"ExchangeTest",
-		"SPOT")
+		assets.AssetTypeSpot)
 
 	if err != nil {
 		t.Error("test failed - OrderbookUpdate error", err)
@@ -297,7 +298,7 @@ func TestUpdate(t *testing.T) {
 		BTCUSDPAIR,
 		time.Now(),
 		"ExchangeTest",
-		"SPOT")
+		assets.AssetTypeSpot)
 
 	if err != nil {
 		t.Error("test failed - OrderbookUpdate error", err)
