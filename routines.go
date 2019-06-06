@@ -425,7 +425,7 @@ func WebsocketDataHandler(ws *exchange.Websocket, verbose bool) {
 			case exchange.KlineData:
 				// Kline data
 				if verbose {
-					log.Infoln("Websocket Kline Updated:    ", d)
+					log.Infof("Websocket Kline Updated:", d,"\n")
 				}
 			case exchange.WebsocketOrderbookUpdate:
 				// Orderbook data

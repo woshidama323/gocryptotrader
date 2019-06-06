@@ -179,10 +179,77 @@ func main() {
 
 	go portfolio.StartPortfolioWatcher()
 
-	go TickerUpdaterRoutine()
-	go OrderbookUpdaterRoutine()
-	go WebsocketRoutine(*verbosity)
+	// go TickerUpdaterRoutine()
+	// go OrderbookUpdaterRoutine()
+	// go WebsocketRoutine(*verbosity)
 
+	var h exchange.IBotExchange
+	for i := range bot.exchanges{
+		if bot.exchanges[i].GetName()== "Huobi"{
+			h = bot.exchanges[i]
+			log.Debugln("the h is..",h)
+		}
+	}
+	// h.GetTickerPrice
+	assettype,err := exchange.GetExchangeAssetTypes("Huobi")
+	if err != nil {
+		log.Debugln("what's the error ",err)
+	}
+	log.Debugln("the assettype is:",assettype)
+
+	//初始化交易对
+	btcpair :=  currency.NewPairFromString("BTC-USDT")
+	ticker, err := h.GetTickerPrice(btcpair,assettype[0])
+	if err != nil {
+		log.Debugln("try to use huobi for learning...:",err)
+	}
+	log.Debugf("got the ticker ?...%+v",ticker,"\n")
+
+
+	//获得account的info
+	clientinfo,err := h.GetAccountInfo()
+	if err != nil{
+		log.Debugln("fail to get the account info from huobi website....",err)
+	}
+	log.Debugf("the account info is ....%+v",clientinfo.Accounts[0].ID,"\n")
+	//初始化币
+	var p = currency.Pair{
+		Delimiter: "",
+		Base:      currency.HT,
+		Quote:     currency.USDT,
+	}
+
+	subres,err := h.SubmitOrder(p,exchange.SellOrderSide,exchange.MarketOrderType,1,2.5,clientinfo.Accounts[0].ID)
+	if err != nil{
+		log.Debugln("sub error.....",err)
+	}
+	log.Debugf("sub result...%+v",subres,"\n")
+
+	book,err := h.UpdateOrderbook(p,assettype[0]);
+	if err != nil {
+		log.Errorf("Fail to update the book.....",err)
+	}
+	log.Debugf("the book is.....%+v",book,"\n")
+
+	//获取历史数据，用于分析曲线
+	history,err := h.GetExchangeHistory(btcpair,assettype[0])
+	if err != nil {
+		log.Debugf("what's the err:",err)
+	}else{
+		log.Debugln("the result is...",history)
+	}
+
+	hbws,_ := h.GetWebsocket()
+	
+	// h.GetSpotKline(exchange.huobi.KlinesRequestParams)
+	go WebsocketDataHandler(hbws, true)
+	err = hbws.Connect()
+	if err != nil {
+		log.Debugln("the error....",err )
+	}
+	log.Debugln(hbws.Orderbook)
+
+	
 	<-bot.shutdown
 	Shutdown()
 }

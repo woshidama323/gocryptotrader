@@ -19,7 +19,7 @@ test:
 	go test -race -coverprofile=coverage.txt -covermode=atomic  ./...
 
 build:
-	GO111MODULE=on go build $(LDFLAGS)
+	mkdir build && cd build && GO111MODULE=on go build $(LDFLAGS) 
 
 install:
 	GO111MODULE=on go install $(LDFLAGS)
