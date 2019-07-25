@@ -192,7 +192,7 @@ func main() {
 	// }
 
 	testh := GetExchangeByName("Huobi")
-	println("....h....",h)
+	// println("....h....",testh)
 	println("....testh....",testh)
 	// h.GetTickerPrice
 	assettype,err := exchange.GetExchangeAssetTypes("Huobi")
@@ -203,7 +203,7 @@ func main() {
 
 	//初始化交易对
 	btcpair :=  currency.NewPairFromString("BTC-USDT")
-	ticker, err := h.GetTickerPrice(btcpair,assettype[0])
+	ticker, err := testh.GetTickerPrice(btcpair,assettype[0])
 	if err != nil {
 		log.Debugln("try to use huobi for learning...:",err)
 	}
@@ -211,7 +211,7 @@ func main() {
 
 
 	//获得account的info
-	clientinfo,err := h.GetAccountInfo()
+	clientinfo,err := testh.GetAccountInfo()
 	if err != nil{
 		log.Debugln("fail to get the account info from huobi website....",err)
 	}
@@ -229,21 +229,21 @@ func main() {
 	}
 	log.Debugf("sub result...%+v",subres,"\n")
 
-	book,err := h.UpdateOrderbook(p,assettype[0]);
+	book,err := testh.UpdateOrderbook(p,assettype[0]);
 	if err != nil {
 		log.Errorf("Fail to update the book.....",err)
 	}
 	log.Debugf("the book is.....%+v",book,"\n")
 
 	//获取历史数据，用于分析曲线
-	history,err := h.GetExchangeHistory(btcpair,assettype[0])
+	history,err := testh.GetExchangeHistory(btcpair,assettype[0])
 	if err != nil {
 		log.Debugf("what's the err:",err)
 	}else{
 		log.Debugln("the result is...",history)
 	}
 
-	hbws,_ := h.GetWebsocket()
+	hbws,_ := testh.GetWebsocket()
 	
 	// h.GetSpotKline(exchange.huobi.KlinesRequestParams)
 	go WebsocketDataHandler(hbws, true)
