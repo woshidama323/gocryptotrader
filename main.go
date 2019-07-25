@@ -183,13 +183,17 @@ func main() {
 	// go OrderbookUpdaterRoutine()
 	// go WebsocketRoutine(*verbosity)
 
-	var h exchange.IBotExchange
-	for i := range bot.exchanges{
-		if bot.exchanges[i].GetName()== "Huobi"{
-			h = bot.exchanges[i]
-			log.Debugln("the h is..",h)
-		}
-	}
+	// var h exchange.IBotExchange
+	// for i := range bot.exchanges{
+	// 	if bot.exchanges[i].GetName()== "Huobi"{
+	// 		h = bot.exchanges[i]
+	// 		log.Debugln("the h is..",h)
+	// 	}
+	// }
+
+	testh := GetExchangeByName("Huobi")
+	println("....h....",h)
+	println("....testh....",testh)
 	// h.GetTickerPrice
 	assettype,err := exchange.GetExchangeAssetTypes("Huobi")
 	if err != nil {
@@ -219,7 +223,7 @@ func main() {
 		Quote:     currency.USDT,
 	}
 
-	subres,err := h.SubmitOrder(p,exchange.SellOrderSide,exchange.MarketOrderType,1,2.5,clientinfo.Accounts[0].ID)
+	subres,err := testh.SubmitOrder(p,exchange.SellOrderSide,exchange.MarketOrderType,1,2.5,clientinfo.Accounts[0].ID)
 	if err != nil{
 		log.Debugln("sub error.....",err)
 	}
