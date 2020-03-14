@@ -394,7 +394,7 @@ func (o *orderManager) processOrders() {
 		req := order.GetOrdersRequest{
 			Side: order.AnySide,
 			Type: order.AnyType,
-			Pair: []currency.Pair{currency.NewPairFromString("BTC-USDT"),currency.NewPairFromString("EOS-USDT")},
+			Pairs: []currency.Pair{currency.NewPairFromString("BTC-USDT"),currency.NewPairFromString("EOS-USDT")},
 		}
 		result, err := exch.GetActiveOrders(&req)
 		if err != nil {
