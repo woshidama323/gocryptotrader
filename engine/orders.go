@@ -11,6 +11,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/communications/base"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/log"
+	"github.com/thrasher-corp/gocryptotrader/currency"
 )
 
 // vars for the fund manager package
@@ -393,6 +394,7 @@ func (o *orderManager) processOrders() {
 		req := order.GetOrdersRequest{
 			Side: order.AnySide,
 			Type: order.AnyType,
+			Pair: []currency.Pair{currency.NewPairFromString("BTC-USDT"),currency.NewPairFromString("EOS-USDT")},
 		}
 		result, err := exch.GetActiveOrders(&req)
 		if err != nil {
