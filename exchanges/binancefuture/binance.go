@@ -23,29 +23,30 @@ import (
 )
 
 const (
-	apiURL = "https://api.binance.com"
+	// apiURL = "https://fapi.binance.com"
+	apiURL = "https://testnet.binancefuture.com"
 
 	// Public endpoints
-	exchangeInfo      = "/api/v1/exchangeInfo"
-	orderBookDepth    = "/api/v1/depth"
-	recentTrades      = "/api/v1/trades"
-	historicalTrades  = "/api/v1/historicalTrades"
-	aggregatedTrades  = "/api/v1/aggTrades"
-	candleStick       = "/api/v1/klines"
-	averagePrice      = "/api/v3/avgPrice"
-	priceChange       = "/api/v1/ticker/24hr"
-	symbolPrice       = "/api/v3/ticker/price"
-	bestPrice         = "/api/v3/ticker/bookTicker"
-	accountInfo       = "/api/v3/account"
-	userAccountStream = "/api/v3/userDataStream"
+	exchangeInfo      = "/fapi/v1/exchangeInfo"
+	orderBookDepth    = "/fapi/v1/depth"
+	recentTrades      = "/fapi/v1/trades"
+	historicalTrades  = "/fapi/v1/historicalTrades"
+	aggregatedTrades  = "/fapi/v1/aggTrades"
+	candleStick       = "/fapi/v1/klines"
+	averagePrice      = "/fapi/v3/avgPrice"
+	priceChange       = "/fapi/v1/ticker/24hr"
+	symbolPrice       = "/fapi/v3/ticker/price"
+	bestPrice         = "/fapi/v3/ticker/bookTicker"
+	accountInfo       = "/fapi/v3/account"
+	userAccountStream = "/fapi/v3/userDataStream"
 
 	// Authenticated endpoints
-	newOrderTest = "/api/v3/order/test"
-	newOrder     = "/api/v3/order"
-	cancelOrder  = "/api/v3/order"
-	queryOrder   = "/api/v3/order"
-	openOrders   = "/api/v3/openOrders"
-	allOrders    = "/api/v3/allOrders"
+	newOrderTest = "/fapi/v3/order/test"
+	newOrder     = "/fapi/v3/order"
+	cancelOrder  = "/fapi/v3/order"
+	queryOrder   = "/fapi/v3/order"
+	openOrders   = "/fapi/v3/openOrders"
+	allOrders    = "/fapi/v3/allOrders"
 
 	// Withdraw API endpoints
 	withdrawEndpoint  = "/wapi/v3/withdraw.html"
