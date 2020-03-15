@@ -35,18 +35,18 @@ const (
 	candleStick       = "/fapi/v1/klines"
 	averagePrice      = "/fapi/v3/avgPrice"
 	priceChange       = "/fapi/v1/ticker/24hr"
-	symbolPrice       = "/fapi/v3/ticker/price"
-	bestPrice         = "/fapi/v3/ticker/bookTicker"
-	accountInfo       = "/fapi/v3/account"
+	symbolPrice       = "/fapi/v1/ticker/price"
+	bestPrice         = "/fapi/v1/ticker/bookTicker"
+	accountInfo       = "/fapi/v1/account"
 	userAccountStream = "/fapi/v3/userDataStream"
 
 	// Authenticated endpoints
-	newOrderTest = "/fapi/v3/order/test"
-	newOrder     = "/fapi/v3/order"
-	cancelOrder  = "/fapi/v3/order"
-	queryOrder   = "/fapi/v3/order"
-	openOrders   = "/fapi/v3/openOrders"
-	allOrders    = "/fapi/v3/allOrders"
+	newOrderTest = "/fapi/v1/order/test"
+	newOrder     = "/fapi/v1/order"
+	cancelOrder  = "/fapi/v1/order"
+	queryOrder   = "/fapi/v1/order"
+	openOrders   = "/fapi/v1/openOrders"
+	allOrders    = "/fapi/v1/allOrders"
 
 	// Withdraw API endpoints
 	withdrawEndpoint  = "/wapi/v3/withdraw.html"
