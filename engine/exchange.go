@@ -215,6 +215,8 @@ func LoadExchange(name string, useWG bool, wg *sync.WaitGroup) error {
 		exch = new(yobit.Yobit)
 	case "zb":
 		exch = new(zb.ZB)
+	case "binancefuture":
+		exch = new(binancefuture.Binance)
 	default:
 		return ErrExchangeNotFound
 	}
