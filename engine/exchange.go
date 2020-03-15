@@ -217,7 +217,7 @@ func LoadExchange(name string, useWG bool, wg *sync.WaitGroup) error {
 	case "zb":
 		exch = new(zb.ZB)
 	case "binancefuture":
-		exch = new(binancefuture.Binance)
+		exch = new(binancefuture.BinanceFuture)
 	default:
 		return ErrExchangeNotFound
 	}
