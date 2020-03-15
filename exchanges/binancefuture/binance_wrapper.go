@@ -48,7 +48,7 @@ func (b *BinanceFuture) GetDefaultConfig() (*config.ExchangeConfig, error) {
 
 // SetDefaults sets the basic defaults for Binance
 func (b *BinanceFuture) SetDefaults() {
-	b.Name = "Binance"
+	b.Name = "BinanceFuture"
 	b.Enabled = true
 	b.Verbose = true
 	b.API.CredentialsValidator.RequiresKey = true
@@ -146,7 +146,7 @@ func (b *BinanceFuture) Setup(exch *config.ExchangeConfig) error {
 			Verbose:                          exch.Verbose,
 			AuthenticatedWebsocketAPISupport: exch.API.AuthenticatedWebsocketSupport,
 			WebsocketTimeout:                 exch.WebsocketTrafficTimeout,
-			DefaultURL:                       binanceDefaultWebsocketURL,
+			DefaultURL:                       ,
 			ExchangeName:                     exch.Name,
 			RunningURL:                       exch.API.Endpoints.WebsocketURL,
 			Connector:                        b.WsConnect,

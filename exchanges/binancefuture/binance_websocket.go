@@ -21,7 +21,8 @@ import (
 )
 
 const (
-	binanceDefaultWebsocketURL = "wss://stream.binance.com:9443"
+	// binanceDefaultWebsocketURL = "wss://stream.binance.com:9443"
+	binanceDefaultWebsocketURL =  "wss://testnet.binancefuture.com"
 	pingDelay                  = time.Minute * 9
 )
 
