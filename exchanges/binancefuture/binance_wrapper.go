@@ -51,6 +51,7 @@ func (b *BinanceFuture) SetDefaults() {
 	b.Name = "BinanceFuture"
 	b.Enabled = true
 	b.Verbose = true
+	b.SkipAuthCheck = true
 	b.API.CredentialsValidator.RequiresKey = false
 	b.API.CredentialsValidator.RequiresSecret = false
 	b.SetValues()
