@@ -24,7 +24,8 @@ import (
 
 const (
 	// apiURL = "https://fapi.binance.com"
-	apiURL = "https://testnet.binancefuture.com"
+	// apiURL = "https://testnet.binancefuture.com"
+	apiURL = "https://fapi.binance.com"
 
 	// Public endpoints
 	exchangeInfo      = "/fapi/v1/exchangeInfo"
@@ -87,7 +88,7 @@ func (b *BinanceFuture) GetExchangeInfo() (ExchangeInfo, error) {
 // GetOrderBook returns full orderbook information
 //
 // OrderBookDataRequestParams contains the following members
-// symbol: string of currency pair
+// symbol: string of currency pair	
 // limit: returned limit amount
 func (b *BinanceFuture) GetOrderBook(obd OrderBookDataRequestParams) (OrderBook, error) {
 	var orderbook OrderBook
