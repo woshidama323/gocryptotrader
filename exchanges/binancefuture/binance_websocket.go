@@ -28,7 +28,7 @@ const (
 var listenKey string
 
 // WsConnect intiates a websocket connection
-func (b *Binance) WsConnect() error {
+func (b *BinanceFuture) WsConnect() error {
 	if !b.Websocket.IsEnabled() || !b.IsEnabled() {
 		return errors.New(wshandler.WebsocketNotEnabled)
 	}
@@ -100,7 +100,7 @@ func (b *Binance) WsConnect() error {
 
 // KeepAuthKeyAlive will continuously send messages to
 // keep the WS auth key active
-func (b *Binance) KeepAuthKeyAlive() {
+func (b *BinanceFuture) KeepAuthKeyAlive() {
 	b.Websocket.Wg.Add(1)
 	defer func() {
 		b.Websocket.Wg.Done()
@@ -122,7 +122,7 @@ func (b *Binance) KeepAuthKeyAlive() {
 }
 
 // wsReadData receives and passes on websocket messages for processing
-func (b *Binance) wsReadData() {
+func (b *BinanceFuture) wsReadData() {
 	b.Websocket.Wg.Add(1)
 	defer func() {
 		b.Websocket.Wg.Done()
@@ -147,7 +147,7 @@ func (b *Binance) wsReadData() {
 	}
 }
 
-func (b *Binance) wsHandleData(respRaw []byte) error {
+func (b *BinanceFuture) wsHandleData(respRaw []byte) error {
 	var multiStreamData map[string]interface{}
 	err := json.Unmarshal(respRaw, &multiStreamData)
 	if err != nil {
@@ -401,7 +401,7 @@ func stringToOrderStatus(status string) (order.Status, error) {
 }
 
 // SeedLocalCache seeds depth data
-func (b *Binance) SeedLocalCache(p currency.Pair) error {
+func (b *BinanceFuture) SeedLocalCache(p currency.Pair) error {
 	var newOrderBook orderbook.Base
 	orderbookNew, err := b.GetOrderBook(
 		OrderBookDataRequestParams{
@@ -433,7 +433,7 @@ func (b *Binance) SeedLocalCache(p currency.Pair) error {
 }
 
 // UpdateLocalCache updates and returns the most recent iteration of the orderbook
-func (b *Binance) UpdateLocalCache(wsdp *WebsocketDepthStream) error {
+func (b *BinanceFuture) UpdateLocalCache(wsdp *WebsocketDepthStream) error {
 	var updateBid, updateAsk []orderbook.Item
 	for i := range wsdp.UpdateBids {
 		p, err := strconv.ParseFloat(wsdp.UpdateBids[i][0].(string), 64)

@@ -24,7 +24,7 @@ import (
 )
 
 // GetDefaultConfig returns a default exchange config
-func (b *Binance) GetDefaultConfig() (*config.ExchangeConfig, error) {
+func (b *BinanceFuture) GetDefaultConfig() (*config.ExchangeConfig, error) {
 	b.SetDefaults()
 	exchCfg := new(config.ExchangeConfig)
 	exchCfg.Name = b.Name
@@ -47,7 +47,7 @@ func (b *Binance) GetDefaultConfig() (*config.ExchangeConfig, error) {
 }
 
 // SetDefaults sets the basic defaults for Binance
-func (b *Binance) SetDefaults() {
+func (b *BinanceFuture) SetDefaults() {
 	b.Name = "Binance"
 	b.Enabled = true
 	b.Verbose = true
@@ -129,7 +129,7 @@ func (b *Binance) SetDefaults() {
 }
 
 // Setup takes in the supplied exchange configuration details and sets params
-func (b *Binance) Setup(exch *config.ExchangeConfig) error {
+func (b *BinanceFuture) Setup(exch *config.ExchangeConfig) error {
 	if !exch.Enabled {
 		b.SetEnabled(false)
 		return nil
@@ -177,7 +177,7 @@ func (b *Binance) Setup(exch *config.ExchangeConfig) error {
 }
 
 // Start starts the Binance go routine
-func (b *Binance) Start(wg *sync.WaitGroup) {
+func (b *BinanceFuture) Start(wg *sync.WaitGroup) {
 	wg.Add(1)
 	go func() {
 		b.Run()
@@ -186,7 +186,7 @@ func (b *Binance) Start(wg *sync.WaitGroup) {
 }
 
 // Run implements the Binance wrapper
-func (b *Binance) Run() {
+func (b *BinanceFuture) Run() {
 	if b.Verbose {
 		log.Debugf(log.ExchangeSys,
 			"%s Websocket: %s. (url: %s).\n",
@@ -230,7 +230,7 @@ func (b *Binance) Run() {
 }
 
 // FetchTradablePairs returns a list of the exchanges tradable pairs
-func (b *Binance) FetchTradablePairs(asset asset.Item) ([]string, error) {
+func (b *BinanceFuture) FetchTradablePairs(asset asset.Item) ([]string, error) {
 	var validCurrencyPairs []string
 
 	info, err := b.GetExchangeInfo()
@@ -250,7 +250,7 @@ func (b *Binance) FetchTradablePairs(asset asset.Item) ([]string, error) {
 
 // UpdateTradablePairs updates the exchanges available pairs and stores
 // them in the exchanges config
-func (b *Binance) UpdateTradablePairs(forceUpdate bool) error {
+func (b *BinanceFuture) UpdateTradablePairs(forceUpdate bool) error {
 	pairs, err := b.FetchTradablePairs(asset.Spot)
 	if err != nil {
 		return err
@@ -263,7 +263,7 @@ func (b *Binance) UpdateTradablePairs(forceUpdate bool) error {
 }
 
 // UpdateTicker updates and returns the ticker for a currency pair
-func (b *Binance) UpdateTicker(p currency.Pair, assetType asset.Item) (*ticker.Price, error) {
+func (b *BinanceFuture) UpdateTicker(p currency.Pair, assetType asset.Item) (*ticker.Price, error) {
 	tick, err := b.GetTickers()
 	if err != nil {
 		return nil, err
@@ -297,7 +297,7 @@ func (b *Binance) UpdateTicker(p currency.Pair, assetType asset.Item) (*ticker.P
 }
 
 // FetchTicker returns the ticker for a currency pair
-func (b *Binance) FetchTicker(p currency.Pair, assetType asset.Item) (*ticker.Price, error) {
+func (b *BinanceFuture) FetchTicker(p currency.Pair, assetType asset.Item) (*ticker.Price, error) {
 	tickerNew, err := ticker.GetTicker(b.Name, p, assetType)
 	if err != nil {
 		return b.UpdateTicker(p, assetType)
@@ -306,7 +306,7 @@ func (b *Binance) FetchTicker(p currency.Pair, assetType asset.Item) (*ticker.Pr
 }
 
 // FetchOrderbook returns orderbook base on the currency pair
-func (b *Binance) FetchOrderbook(p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+func (b *BinanceFuture) FetchOrderbook(p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
 	ob, err := orderbook.Get(b.Name, p, assetType)
 	if err != nil {
 		return b.UpdateOrderbook(p, assetType)
@@ -315,7 +315,7 @@ func (b *Binance) FetchOrderbook(p currency.Pair, assetType asset.Item) (*orderb
 }
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
-func (b *Binance) UpdateOrderbook(p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+func (b *BinanceFuture) UpdateOrderbook(p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
 	orderBook := new(orderbook.Base)
 	orderbookNew, err := b.GetOrderBook(OrderBookDataRequestParams{Symbol: b.FormatExchangeCurrency(p,
 		assetType).String(), Limit: 1000})
@@ -353,7 +353,7 @@ func (b *Binance) UpdateOrderbook(p currency.Pair, assetType asset.Item) (*order
 
 // UpdateAccountInfo retrieves balances for all enabled currencies for the
 // Bithumb exchange
-func (b *Binance) UpdateAccountInfo() (account.Holdings, error) {
+func (b *BinanceFuture) UpdateAccountInfo() (account.Holdings, error) {
 	var info account.Holdings
 	raw, err := b.GetAccount()
 	if err != nil {
@@ -393,7 +393,7 @@ func (b *Binance) UpdateAccountInfo() (account.Holdings, error) {
 }
 
 // FetchAccountInfo retrieves balances for all enabled currencies
-func (b *Binance) FetchAccountInfo() (account.Holdings, error) {
+func (b *BinanceFuture) FetchAccountInfo() (account.Holdings, error) {
 	acc, err := account.GetHoldings(b.Name)
 	if err != nil {
 		return b.UpdateAccountInfo()
@@ -404,17 +404,17 @@ func (b *Binance) FetchAccountInfo() (account.Holdings, error) {
 
 // GetFundingHistory returns funding history, deposits and
 // withdrawals
-func (b *Binance) GetFundingHistory() ([]exchange.FundHistory, error) {
+func (b *BinanceFuture) GetFundingHistory() ([]exchange.FundHistory, error) {
 	return nil, common.ErrFunctionNotSupported
 }
 
 // GetExchangeHistory returns historic trade data since exchange opening.
-func (b *Binance) GetExchangeHistory(p currency.Pair, assetType asset.Item) ([]exchange.TradeHistory, error) {
+func (b *BinanceFuture) GetExchangeHistory(p currency.Pair, assetType asset.Item) ([]exchange.TradeHistory, error) {
 	return nil, common.ErrNotYetImplemented
 }
 
 // SubmitOrder submits a new order
-func (b *Binance) SubmitOrder(s *order.Submit) (order.SubmitResponse, error) {
+func (b *BinanceFuture) SubmitOrder(s *order.Submit) (order.SubmitResponse, error) {
 	var submitOrderResponse order.SubmitResponse
 	if err := s.Validate(); err != nil {
 		return submitOrderResponse, err
@@ -464,12 +464,12 @@ func (b *Binance) SubmitOrder(s *order.Submit) (order.SubmitResponse, error) {
 
 // ModifyOrder will allow of changing orderbook placement and limit to
 // market conversion
-func (b *Binance) ModifyOrder(action *order.Modify) (string, error) {
+func (b *BinanceFuture) ModifyOrder(action *order.Modify) (string, error) {
 	return "", common.ErrFunctionNotSupported
 }
 
 // CancelOrder cancels an order by its corresponding ID number
-func (b *Binance) CancelOrder(order *order.Cancel) error {
+func (b *BinanceFuture) CancelOrder(order *order.Cancel) error {
 	orderIDInt, err := strconv.ParseInt(order.ID, 10, 64)
 	if err != nil {
 		return err
@@ -483,7 +483,7 @@ func (b *Binance) CancelOrder(order *order.Cancel) error {
 }
 
 // CancelAllOrders cancels all orders associated with a currency pair
-func (b *Binance) CancelAllOrders(_ *order.Cancel) (order.CancelAllResponse, error) {
+func (b *BinanceFuture) CancelAllOrders(_ *order.Cancel) (order.CancelAllResponse, error) {
 	cancelAllOrdersResponse := order.CancelAllResponse{
 		Status: make(map[string]string),
 	}
@@ -505,19 +505,19 @@ func (b *Binance) CancelAllOrders(_ *order.Cancel) (order.CancelAllResponse, err
 }
 
 // GetOrderInfo returns information on a current open order
-func (b *Binance) GetOrderInfo(orderID string) (order.Detail, error) {
+func (b *BinanceFuture) GetOrderInfo(orderID string) (order.Detail, error) {
 	var orderDetail order.Detail
 	return orderDetail, common.ErrNotYetImplemented
 }
 
 // GetDepositAddress returns a deposit address for a specified currency
-func (b *Binance) GetDepositAddress(cryptocurrency currency.Code, _ string) (string, error) {
+func (b *BinanceFuture) GetDepositAddress(cryptocurrency currency.Code, _ string) (string, error) {
 	return b.GetDepositAddressForCurrency(cryptocurrency.String())
 }
 
 // WithdrawCryptocurrencyFunds returns a withdrawal ID when a withdrawal is
 // submitted
-func (b *Binance) WithdrawCryptocurrencyFunds(withdrawRequest *withdraw.Request) (*withdraw.ExchangeResponse, error) {
+func (b *BinanceFuture) WithdrawCryptocurrencyFunds(withdrawRequest *withdraw.Request) (*withdraw.ExchangeResponse, error) {
 	amountStr := strconv.FormatFloat(withdrawRequest.Amount, 'f', -1, 64)
 	v, err := b.WithdrawCrypto(withdrawRequest.Currency.String(),
 		withdrawRequest.Crypto.Address,
@@ -533,23 +533,23 @@ func (b *Binance) WithdrawCryptocurrencyFunds(withdrawRequest *withdraw.Request)
 
 // WithdrawFiatFunds returns a withdrawal ID when a
 // withdrawal is submitted
-func (b *Binance) WithdrawFiatFunds(withdrawRequest *withdraw.Request) (*withdraw.ExchangeResponse, error) {
+func (b *BinanceFuture) WithdrawFiatFunds(withdrawRequest *withdraw.Request) (*withdraw.ExchangeResponse, error) {
 	return nil, common.ErrFunctionNotSupported
 }
 
 // WithdrawFiatFundsToInternationalBank returns a withdrawal ID when a
 // withdrawal is submitted
-func (b *Binance) WithdrawFiatFundsToInternationalBank(withdrawRequest *withdraw.Request) (*withdraw.ExchangeResponse, error) {
+func (b *BinanceFuture) WithdrawFiatFundsToInternationalBank(withdrawRequest *withdraw.Request) (*withdraw.ExchangeResponse, error) {
 	return nil, common.ErrFunctionNotSupported
 }
 
 // GetWebsocket returns a pointer to the exchange websocket
-func (b *Binance) GetWebsocket() (*wshandler.Websocket, error) {
+func (b *BinanceFuture) GetWebsocket() (*wshandler.Websocket, error) {
 	return b.Websocket, nil
 }
 
 // GetFeeByType returns an estimate of fee based on type of transaction
-func (b *Binance) GetFeeByType(feeBuilder *exchange.FeeBuilder) (float64, error) {
+func (b *BinanceFuture) GetFeeByType(feeBuilder *exchange.FeeBuilder) (float64, error) {
 	if (!b.AllowAuthenticatedRequest() || b.SkipAuthCheck) && // Todo check connection status
 		feeBuilder.FeeType == exchange.CryptocurrencyTradeFee {
 		feeBuilder.FeeType = exchange.OfflineTradeFee
@@ -558,7 +558,7 @@ func (b *Binance) GetFeeByType(feeBuilder *exchange.FeeBuilder) (float64, error)
 }
 
 // GetActiveOrders retrieves any orders that are active/open
-func (b *Binance) GetActiveOrders(req *order.GetOrdersRequest) ([]order.Detail, error) {
+func (b *BinanceFuture) GetActiveOrders(req *order.GetOrdersRequest) ([]order.Detail, error) {
 	if len(req.Pairs) == 0 {
 		return nil, errors.New("at least one currency is required to fetch order history")
 	}
@@ -598,7 +598,7 @@ func (b *Binance) GetActiveOrders(req *order.GetOrdersRequest) ([]order.Detail, 
 
 // GetOrderHistory retrieves account order information
 // Can Limit response to specific order status
-func (b *Binance) GetOrderHistory(req *order.GetOrdersRequest) ([]order.Detail, error) {
+func (b *BinanceFuture) GetOrderHistory(req *order.GetOrdersRequest) ([]order.Detail, error) {
 	if len(req.Pairs) == 0 {
 		return nil, errors.New("at least one currency is required to fetch order history")
 	}
@@ -644,29 +644,29 @@ func (b *Binance) GetOrderHistory(req *order.GetOrdersRequest) ([]order.Detail, 
 
 // SubscribeToWebsocketChannels appends to ChannelsToSubscribe
 // which lets websocket.manageSubscriptions handle subscribing
-func (b *Binance) SubscribeToWebsocketChannels(channels []wshandler.WebsocketChannelSubscription) error {
+func (b *BinanceFuture) SubscribeToWebsocketChannels(channels []wshandler.WebsocketChannelSubscription) error {
 	return common.ErrFunctionNotSupported
 }
 
 // UnsubscribeToWebsocketChannels removes from ChannelsToSubscribe
 // which lets websocket.manageSubscriptions handle unsubscribing
-func (b *Binance) UnsubscribeToWebsocketChannels(channels []wshandler.WebsocketChannelSubscription) error {
+func (b *BinanceFuture) UnsubscribeToWebsocketChannels(channels []wshandler.WebsocketChannelSubscription) error {
 	return common.ErrFunctionNotSupported
 }
 
 // GetSubscriptions returns a copied list of subscriptions
-func (b *Binance) GetSubscriptions() ([]wshandler.WebsocketChannelSubscription, error) {
+func (b *BinanceFuture) GetSubscriptions() ([]wshandler.WebsocketChannelSubscription, error) {
 	return b.Websocket.GetSubscriptions(), nil
 }
 
 // AuthenticateWebsocket sends an authentication message to the websocket
-func (b *Binance) AuthenticateWebsocket() error {
+func (b *BinanceFuture) AuthenticateWebsocket() error {
 	return common.ErrFunctionNotSupported
 }
 
 // ValidateCredentials validates current credentials used for wrapper
 // functionality
-func (b *Binance) ValidateCredentials() error {
+func (b *BinanceFuture) ValidateCredentials() error {
 	_, err := b.UpdateAccountInfo()
 	return b.CheckTransientError(err)
 }
