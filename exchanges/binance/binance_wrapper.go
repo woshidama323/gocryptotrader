@@ -13,6 +13,7 @@ import (
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/account"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/protocol"
@@ -669,4 +670,42 @@ func (b *Binance) AuthenticateWebsocket() error {
 func (b *Binance) ValidateCredentials() error {
 	_, err := b.UpdateAccountInfo()
 	return b.CheckTransientError(err)
+}
+
+// GetHistoricCandles returns candles between a time period for a set time interval
+func (b *Binance) GetHistoricCandles(pair currency.Pair, a asset.Item, start, end time.Time, interval time.Duration) (kline.Item, error) {
+	intervalToString, err := parseInterval(interval)
+	if err != nil {
+		return kline.Item{}, err
+	}
+	klineParams := KlinesRequestParams{
+		Interval:  intervalToString,
+		Symbol:    b.FormatExchangeCurrency(pair, a).String(),
+		StartTime: start.Unix() * 1000,
+		EndTime:   end.Unix() * 1000,
+	}
+
+	candles, err := b.GetSpotKline(klineParams)
+	if err != nil {
+		return kline.Item{}, err
+	}
+
+	ret := kline.Item{
+		Exchange: b.Name,
+		Pair:     pair,
+		Asset:    a,
+		Interval: interval,
+	}
+
+	for x := range candles {
+		ret.Candles = append(ret.Candles, kline.Candle{
+			Time:   candles[x].OpenTime,
+			Open:   candles[x].Open,
+			High:   candles[x].Close,
+			Low:    candles[x].Low,
+			Close:  candles[x].Close,
+			Volume: candles[x].Volume,
+		})
+	}
+	return ret, nil
 }
