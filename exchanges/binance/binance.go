@@ -2,6 +2,7 @@ package binance
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -320,14 +321,35 @@ func (b *Binance) GetBestPrice(symbol string) (BestPrice, error) {
 // NewOrder sends a new order to Binance
 func (b *Binance) NewOrder(o *NewOrderRequest) (NewOrderResponse, error) {
 	var resp NewOrderResponse
+	if err := b.newOrder(newOrder, o, &resp); err != nil {
+		return resp, err
+	}
 
-	path := b.API.Endpoints.URL + newOrder
+	if resp.Code != 0 {
+		return resp, errors.New(resp.Msg)
+	}
+
+	return resp, nil
+}
+
+// NewOrderTest sends a new test order to Binance
+func (b *Binance) NewOrderTest(o *NewOrderRequest) error {
+	var resp NewOrderResponse
+	return b.newOrder(newOrderTest, o, &resp)
+}
+
+func (b *Binance) newOrder(api string, o *NewOrderRequest, resp *NewOrderResponse) error {
+	path := b.API.Endpoints.URL + api
 
 	params := url.Values{}
 	params.Set("symbol", o.Symbol)
 	params.Set("side", o.Side)
 	params.Set("type", string(o.TradeType))
-	params.Set("quantity", strconv.FormatFloat(o.Quantity, 'f', -1, 64))
+	if o.QuoteOrderQty > 0 {
+		params.Set("quoteOrderQty", strconv.FormatFloat(o.QuoteOrderQty, 'f', -1, 64))
+	} else {
+		params.Set("quantity", strconv.FormatFloat(o.Quantity, 'f', -1, 64))
+	}
 	if o.TradeType == BinanceRequestParamsOrderLimit {
 		params.Set("price", strconv.FormatFloat(o.Price, 'f', -1, 64))
 	}
@@ -351,14 +373,7 @@ func (b *Binance) NewOrder(o *NewOrderRequest) (NewOrderResponse, error) {
 		params.Set("newOrderRespType", o.NewOrderRespType)
 	}
 
-	if err := b.SendAuthHTTPRequest(http.MethodPost, path, params, limitOrder, &resp); err != nil {
-		return resp, err
-	}
-
-	if resp.Code != 0 {
-		return resp, errors.New(resp.Msg)
-	}
-	return resp, nil
+	return b.SendAuthHTTPRequest(http.MethodPost, path, params, limitOrder, resp)
 }
 
 // CancelExistingOrder sends a cancel order to Binance
@@ -475,7 +490,7 @@ func (b *Binance) GetAccount() (*Account, error) {
 
 // SendHTTPRequest sends an unauthenticated request
 func (b *Binance) SendHTTPRequest(path string, f request.EndpointLimit, result interface{}) error {
-	return b.SendPayload(&request.Item{
+	return b.SendPayload(context.Background(), &request.Item{
 		Method:        http.MethodGet,
 		Path:          path,
 		Result:        result,
@@ -494,7 +509,8 @@ func (b *Binance) SendAuthHTTPRequest(method, path string, params url.Values, f 
 	if params == nil {
 		params = url.Values{}
 	}
-	params.Set("recvWindow", strconv.FormatInt(convert.RecvWindow(5*time.Second), 10))
+	recvWindow := 5 * time.Second
+	params.Set("recvWindow", strconv.FormatInt(convert.RecvWindow(recvWindow), 10))
 	params.Set("timestamp", strconv.FormatInt(time.Now().Unix()*1000, 10))
 
 	signature := params.Encode()
@@ -518,7 +534,9 @@ func (b *Binance) SendAuthHTTPRequest(method, path string, params url.Values, f 
 		Message string `json:"msg"`
 	}{}
 
-	err := b.SendPayload(&request.Item{
+	ctx, cancel := context.WithTimeout(context.Background(), recvWindow)
+	defer cancel()
+	err := b.SendPayload(ctx, &request.Item{
 		Method:        method,
 		Path:          path,
 		Headers:       headers,
@@ -698,7 +716,7 @@ func (b *Binance) GetWsAuthStreamKey() (string, error) {
 	path := b.API.Endpoints.URL + userAccountStream
 	headers := make(map[string]string)
 	headers["X-MBX-APIKEY"] = b.API.Credentials.Key
-	err := b.SendPayload(&request.Item{
+	err := b.SendPayload(context.Background(), &request.Item{
 		Method:        http.MethodPost,
 		Path:          path,
 		Headers:       headers,
@@ -728,7 +746,7 @@ func (b *Binance) MaintainWsAuthStreamKey() error {
 	path = common.EncodeURLValues(path, params)
 	headers := make(map[string]string)
 	headers["X-MBX-APIKEY"] = b.API.Credentials.Key
-	return b.SendPayload(&request.Item{
+	return b.SendPayload(context.Background(), &request.Item{
 		Method:        http.MethodPut,
 		Path:          path,
 		Headers:       headers,
