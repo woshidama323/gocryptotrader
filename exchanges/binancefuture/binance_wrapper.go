@@ -49,7 +49,7 @@ func (b *Binance) GetDefaultConfig() (*config.ExchangeConfig, error) {
 
 // SetDefaults sets the basic defaults for Binance
 func (b *Binance) SetDefaults() {
-	b.Name = "Binance"
+	b.Name = "BinanceFuture"
 	b.Enabled = true
 	b.Verbose = true
 	b.API.CredentialsValidator.RequiresKey = true
