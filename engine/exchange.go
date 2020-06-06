@@ -8,7 +8,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/common"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/binance"
-	// "github.com/thrasher-corp/gocryptotrader/exchanges/binancefuture"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/binancefuture"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/bitfinex"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/bitflyer"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/bithumb"
@@ -216,8 +216,8 @@ func LoadExchange(name string, useWG bool, wg *sync.WaitGroup) error {
 		exch = new(yobit.Yobit)
 	case "zb":
 		exch = new(zb.ZB)
-	// case "binancefuture":
-	// 	exch = new(binancefuture.BinanceFuture)
+	case "binancefuture":
+		exch = new(binancefuture.Binance)
 	default:
 		return ErrExchangeNotFound
 	}
