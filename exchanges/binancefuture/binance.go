@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	apiURL = "https://api.binance.com"
+	apiURL = "https://fapi.binance.com" //"https://api.binance.com"
 
 	// Public endpoints
 	exchangeInfo      = "/fapi/v1/exchangeInfo"
