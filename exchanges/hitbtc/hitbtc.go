@@ -8,12 +8,12 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/common/crypto"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/websocket/wshandler"
 )
 
 const (
@@ -46,7 +46,6 @@ const (
 // HitBTC is the overarching type across the hitbtc package
 type HitBTC struct {
 	exchange.Base
-	WebsocketConn *wshandler.WebsocketConnection
 }
 
 // Public Market Data
@@ -129,37 +128,25 @@ func (h *HitBTC) GetTickers() ([]TickerResponse, error) {
 }
 
 // GetTrades returns trades from hitbtc
-func (h *HitBTC) GetTrades(currencyPair, from, till, limit, offset, by, sort string) ([]TradeHistory, error) {
-	// start   Number or Datetime
-	// end     Number or Datetime
-	// limit   Number
-	// offset  Number
-	// by      Filtration definition. Accepted values: id, timestamh. Default timestamp
-	// sort    Default DESC
-	vals := url.Values{}
-
-	if from != "" {
-		vals.Set("from", from)
+func (h *HitBTC) GetTrades(currencyPair, by, sort string, from, till, limit, offset int64) ([]TradeHistory, error) {
+	urlValues := url.Values{}
+	if from > 0 {
+		urlValues.Set("from", strconv.FormatInt(from, 10))
 	}
-
-	if till != "" {
-		vals.Set("till", till)
+	if till > 0 {
+		urlValues.Set("till", strconv.FormatInt(till, 10))
 	}
-
-	if limit != "" {
-		vals.Set("limit", limit)
+	if limit > 0 {
+		urlValues.Set("limit", strconv.FormatInt(limit, 10))
 	}
-
-	if offset != "" {
-		vals.Set("offset", offset)
+	if offset > 0 {
+		urlValues.Set("offset", strconv.FormatInt(offset, 10))
 	}
-
 	if by != "" {
-		vals.Set("by", by)
+		urlValues.Set("by", by)
 	}
-
 	if sort != "" {
-		vals.Set("sort", sort)
+		urlValues.Set("sort", sort)
 	}
 
 	var resp []TradeHistory
@@ -167,7 +154,7 @@ func (h *HitBTC) GetTrades(currencyPair, from, till, limit, offset, by, sort str
 		h.API.Endpoints.URL,
 		apiV2Trades,
 		currencyPair,
-		vals.Encode())
+		urlValues.Encode())
 	return resp, h.SendHTTPRequest(path, &resp)
 }
 
@@ -201,17 +188,28 @@ func (h *HitBTC) GetOrderbook(currencyPair string, limit int) (Orderbook, error)
 
 // GetCandles returns candles which is used for OHLC a specific currency.
 // Note: Result contain candles only with non zero volume.
-func (h *HitBTC) GetCandles(currencyPair, limit, period string) ([]ChartData, error) {
+func (h *HitBTC) GetCandles(currencyPair, limit, period string, start, end time.Time) ([]ChartData, error) {
 	// limit   Limit of candles, default 100.
 	// period  One of: M1 (one minute), M3, M5, M15, M30, H1, H4, D1, D7, 1M (one month). Default is M30 (30 minutes).
 	vals := url.Values{}
-
 	if limit != "" {
 		vals.Set("limit", limit)
 	}
 
 	if period != "" {
 		vals.Set("period", period)
+	}
+
+	if !end.IsZero() && start.After(end) {
+		return nil, errors.New("start time cannot be after end time")
+	}
+
+	if !start.IsZero() {
+		vals.Set("from", start.Format(time.RFC3339))
+	}
+
+	if !end.IsZero() {
+		vals.Set("till", end.Format(time.RFC3339))
 	}
 
 	var resp []ChartData

@@ -12,8 +12,9 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/websocket/wshandler"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
 
@@ -30,7 +31,7 @@ type FakePassingExchange struct {
 
 // addPassingFakeExchange adds an exchange to engine tests where all funcs return a positive result
 func addPassingFakeExchange(baseExchangeName string) error {
-	testExch := GetExchangeByName(baseExchangeName)
+	testExch := Bot.GetExchangeByName(baseExchangeName)
 	if testExch == nil {
 		return ErrExchangeNotFound
 	}
@@ -89,11 +90,11 @@ func (h *FakePassingExchange) FetchTradablePairs(_ asset.Item) ([]string, error)
 }
 func (h *FakePassingExchange) UpdateTradablePairs(_ bool) error { return nil }
 
-func (h *FakePassingExchange) GetEnabledPairs(_ asset.Item) currency.Pairs {
-	return currency.Pairs{}
+func (h *FakePassingExchange) GetEnabledPairs(_ asset.Item) (currency.Pairs, error) {
+	return currency.Pairs{}, nil
 }
-func (h *FakePassingExchange) GetAvailablePairs(_ asset.Item) currency.Pairs {
-	return currency.Pairs{}
+func (h *FakePassingExchange) GetAvailablePairs(_ asset.Item) (currency.Pairs, error) {
+	return currency.Pairs{}, nil
 }
 func (h *FakePassingExchange) FetchAccountInfo() (account.Holdings, error) {
 	return account.Holdings{}, nil
@@ -107,7 +108,10 @@ func (h *FakePassingExchange) SetPairs(_ currency.Pairs, _ asset.Item, _ bool) e
 	return nil
 }
 func (h *FakePassingExchange) GetAssetTypes() asset.Items { return asset.Items{asset.Spot} }
-func (h *FakePassingExchange) GetExchangeHistory(_ currency.Pair, _ asset.Item) ([]exchange.TradeHistory, error) {
+func (h *FakePassingExchange) GetHistoricTrades(_ currency.Pair, _ asset.Item, _, _ time.Time) ([]trade.Data, error) {
+	return nil, nil
+}
+func (h *FakePassingExchange) GetRecentTrades(_ currency.Pair, _ asset.Item) ([]trade.Data, error) {
 	return nil, nil
 }
 func (h *FakePassingExchange) SupportsAutoPairUpdates() bool        { return true }
@@ -132,8 +136,11 @@ func (h *FakePassingExchange) CancelOrder(_ *order.Cancel) error           { ret
 func (h *FakePassingExchange) CancelAllOrders(_ *order.Cancel) (order.CancelAllResponse, error) {
 	return order.CancelAllResponse{}, nil
 }
-func (h *FakePassingExchange) GetOrderInfo(_ string) (order.Detail, error) {
-	return order.Detail{}, nil
+func (h *FakePassingExchange) GetOrderInfo(_ string, _ currency.Pair, _ asset.Item) (order.Detail, error) {
+	return order.Detail{
+		Exchange: fakePassExchange,
+		ID:       "fakeOrder",
+	}, nil
 }
 func (h *FakePassingExchange) GetDepositAddress(_ currency.Code, _ string) (string, error) {
 	return "", nil
@@ -142,6 +149,11 @@ func (h *FakePassingExchange) GetOrderHistory(_ *order.GetOrdersRequest) ([]orde
 	return nil, nil
 }
 func (h *FakePassingExchange) GetActiveOrders(_ *order.GetOrdersRequest) ([]order.Detail, error) {
+	pair, err := currency.NewPairFromString("BTCUSD")
+	if err != nil {
+		return nil, err
+	}
+
 	return []order.Detail{
 		{
 			Price:     1337,
@@ -153,31 +165,34 @@ func (h *FakePassingExchange) GetActiveOrders(_ *order.GetOrdersRequest) ([]orde
 			Status:    order.Active,
 			AssetType: asset.Spot,
 			Date:      time.Now(),
-			Pair:      currency.NewPairFromString("BTCUSD"),
+			Pair:      pair,
 		},
 	}, nil
 }
-func (h *FakePassingExchange) SetHTTPClientUserAgent(_ string)             {}
-func (h *FakePassingExchange) GetHTTPClientUserAgent() string              { return "" }
-func (h *FakePassingExchange) SetClientProxyAddress(_ string) error        { return nil }
-func (h *FakePassingExchange) SupportsWebsocket() bool                     { return true }
-func (h *FakePassingExchange) SupportsREST() bool                          { return true }
-func (h *FakePassingExchange) IsWebsocketEnabled() bool                    { return true }
-func (h *FakePassingExchange) GetWebsocket() (*wshandler.Websocket, error) { return nil, nil }
-func (h *FakePassingExchange) SubscribeToWebsocketChannels(_ []wshandler.WebsocketChannelSubscription) error {
+func (h *FakePassingExchange) SetHTTPClientUserAgent(_ string)          {}
+func (h *FakePassingExchange) GetHTTPClientUserAgent() string           { return "" }
+func (h *FakePassingExchange) SetClientProxyAddress(_ string) error     { return nil }
+func (h *FakePassingExchange) SupportsWebsocket() bool                  { return true }
+func (h *FakePassingExchange) SupportsREST() bool                       { return true }
+func (h *FakePassingExchange) IsWebsocketEnabled() bool                 { return true }
+func (h *FakePassingExchange) GetWebsocket() (*stream.Websocket, error) { return nil, nil }
+func (h *FakePassingExchange) SubscribeToWebsocketChannels(_ []stream.ChannelSubscription) error {
 	return nil
 }
-func (h *FakePassingExchange) UnsubscribeToWebsocketChannels(_ []wshandler.WebsocketChannelSubscription) error {
+func (h *FakePassingExchange) UnsubscribeToWebsocketChannels(_ []stream.ChannelSubscription) error {
 	return nil
 }
 func (h *FakePassingExchange) AuthenticateWebsocket() error { return nil }
-func (h *FakePassingExchange) GetSubscriptions() ([]wshandler.WebsocketChannelSubscription, error) {
+func (h *FakePassingExchange) GetSubscriptions() ([]stream.ChannelSubscription, error) {
 	return nil, nil
 }
 func (h *FakePassingExchange) GetDefaultConfig() (*config.ExchangeConfig, error) { return nil, nil }
 func (h *FakePassingExchange) GetBase() *exchange.Base                           { return nil }
 func (h *FakePassingExchange) SupportsAsset(_ asset.Item) bool                   { return true }
-func (h *FakePassingExchange) GetHistoricCandles(_ currency.Pair, _ asset.Item, _, _ time.Time, _ time.Duration) (kline.Item, error) {
+func (h *FakePassingExchange) GetHistoricCandles(_ currency.Pair, _ asset.Item, _, _ time.Time, _ kline.Interval) (kline.Item, error) {
+	return kline.Item{}, nil
+}
+func (h *FakePassingExchange) GetHistoricCandlesExtended(_ currency.Pair, _ asset.Item, _, _ time.Time, _ kline.Interval) (kline.Item, error) {
 	return kline.Item{}, nil
 }
 func (h *FakePassingExchange) DisableRateLimiter() error { return nil }

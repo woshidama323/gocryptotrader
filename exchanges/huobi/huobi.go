@@ -16,7 +16,6 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/websocket/wshandler"
 )
 
 const (
@@ -62,9 +61,7 @@ const (
 // HUOBI is the overarching type across this package
 type HUOBI struct {
 	exchange.Base
-	AccountID                  string
-	WebsocketConn              *wshandler.WebsocketConnection
-	AuthenticatedWebsocketConn *wshandler.WebsocketConnection
+	AccountID string
 }
 
 // GetSpotKline returns kline data
@@ -72,7 +69,7 @@ type HUOBI struct {
 func (h *HUOBI) GetSpotKline(arg KlinesRequestParams) ([]KlineItem, error) {
 	vals := url.Values{}
 	vals.Set("symbol", arg.Symbol)
-	vals.Set("period", string(arg.Period))
+	vals.Set("period", arg.Period)
 
 	if arg.Size != 0 {
 		vals.Set("size", strconv.Itoa(arg.Size))
@@ -170,7 +167,7 @@ func (h *HUOBI) GetTrades(symbol string) ([]Trade, error) {
 //
 // symbol: string of currency pair
 func (h *HUOBI) GetLatestSpotPrice(symbol string) (float64, error) {
-	list, err := h.GetTradeHistory(symbol, "1")
+	list, err := h.GetTradeHistory(symbol, 1)
 
 	if err != nil {
 		return 0, err
@@ -183,12 +180,12 @@ func (h *HUOBI) GetLatestSpotPrice(symbol string) (float64, error) {
 }
 
 // GetTradeHistory returns the trades for the specified symbol
-func (h *HUOBI) GetTradeHistory(symbol, size string) ([]TradeHistory, error) {
+func (h *HUOBI) GetTradeHistory(symbol string, size int64) ([]TradeHistory, error) {
 	vals := url.Values{}
 	vals.Set("symbol", symbol)
 
-	if size != "" {
-		vals.Set("size", size)
+	if size > 0 {
+		vals.Set("size", strconv.FormatInt(size, 10))
 	}
 
 	type response struct {

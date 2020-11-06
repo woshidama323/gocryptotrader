@@ -14,9 +14,10 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/websocket/wshandler"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
 
@@ -45,14 +46,11 @@ func TestMain(m *testing.M) {
 	hitbtcConfig.API.AuthenticatedWebsocketSupport = true
 	hitbtcConfig.API.Credentials.Key = apiKey
 	hitbtcConfig.API.Credentials.Secret = apiSecret
-
+	h.Websocket = sharedtestvalues.NewTestWebsocket()
 	err = h.Setup(hitbtcConfig)
 	if err != nil {
 		log.Fatal("HitBTC setup error", err)
 	}
-
-	h.Websocket.DataHandler = sharedtestvalues.GetWebsocketInterfaceChannelOverride()
-	h.Websocket.TrafficAlert = sharedtestvalues.GetWebsocketStructChannelOverride()
 	os.Exit(m.Run())
 }
 
@@ -64,16 +62,52 @@ func TestGetOrderbook(t *testing.T) {
 }
 
 func TestGetTrades(t *testing.T) {
-	_, err := h.GetTrades("BTCUSD", "", "", "", "", "", "")
+	_, err := h.GetTrades("BTCUSD", "", "", 0, 0, 0, 0)
 	if err != nil {
 		t.Error("Test faild - HitBTC GetTradeHistory() error", err)
 	}
 }
 
 func TestGetChartCandles(t *testing.T) {
-	_, err := h.GetCandles("BTCUSD", "", "")
+	_, err := h.GetCandles("BTCUSD", "", "D1", time.Now().Add(-24*time.Hour), time.Now())
 	if err != nil {
 		t.Error("Test faild - HitBTC GetChartData() error", err)
+	}
+}
+
+func TestGetHistoricCandles(t *testing.T) {
+	currencyPair, err := currency.NewPairFromString("BTC-USD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	startTime := time.Now().Add(-time.Hour * 24)
+	end := time.Now()
+	_, err = h.GetHistoricCandles(currencyPair, asset.Spot, startTime, end, kline.OneMin)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = h.GetHistoricCandles(currencyPair, asset.Spot, startTime, end, kline.Interval(time.Hour*7))
+	if err == nil {
+		t.Fatal("unexpected result")
+	}
+}
+
+func TestGetHistoricCandlesExtended(t *testing.T) {
+	currencyPair, err := currency.NewPairFromString("BTC-USD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	startTime := time.Unix(1546300800, 0)
+	end := time.Unix(1577836799, 0)
+	_, err = h.GetHistoricCandlesExtended(currencyPair, asset.Spot, startTime, end, kline.OneHour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = h.GetHistoricCandlesExtended(currencyPair, asset.Spot, startTime, end, kline.Interval(time.Hour*7))
+	if err == nil {
+		t.Fatal("unexpected result")
 	}
 }
 
@@ -111,8 +145,12 @@ func TestGetFeeByTypeOfflineTradeFee(t *testing.T) {
 }
 
 func TestUpdateTicker(t *testing.T) {
-	h.CurrencyPairs.StorePairs(asset.Spot, currency.NewPairsFromStrings([]string{"BTC-USD", "XRP-USD"}), true)
-	_, err := h.UpdateTicker(currency.NewPair(currency.BTC, currency.USD), asset.Spot)
+	pairs, err := currency.NewPairsFromStrings([]string{"BTC-USD", "XRP-USD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.CurrencyPairs.StorePairs(asset.Spot, pairs, true)
+	_, err = h.UpdateTicker(currency.NewPair(currency.BTC, currency.USD), asset.Spot)
 	if err != nil {
 		t.Error(err)
 	}
@@ -269,11 +307,12 @@ func TestSubmitOrder(t *testing.T) {
 			Base:  currency.DGD,
 			Quote: currency.BTC,
 		},
-		Side:     order.Buy,
-		Type:     order.Limit,
-		Price:    1,
-		Amount:   1,
-		ClientID: "meowOrder",
+		Side:      order.Buy,
+		Type:      order.Limit,
+		Price:     1,
+		Amount:    1,
+		ClientID:  "meowOrder",
+		AssetType: asset.Spot,
 	}
 	response, err := h.SubmitOrder(orderSubmission)
 	if areTestAPIKeysSet() && (err != nil || !response.IsOrderPlaced) {
@@ -294,6 +333,7 @@ func TestCancelExchangeOrder(t *testing.T) {
 		WalletAddress: core.BitcoinDonationAddress,
 		AccountID:     "1",
 		Pair:          currencyPair,
+		AssetType:     asset.Spot,
 	}
 
 	err := h.CancelOrder(orderCancellation)
@@ -316,6 +356,7 @@ func TestCancelAllExchangeOrders(t *testing.T) {
 		WalletAddress: core.BitcoinDonationAddress,
 		AccountID:     "1",
 		Pair:          currencyPair,
+		AssetType:     asset.Spot,
 	}
 
 	resp, err := h.CancelAllOrders(orderCancellation)
@@ -336,7 +377,7 @@ func TestModifyOrder(t *testing.T) {
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
-	_, err := h.ModifyOrder(&order.Modify{})
+	_, err := h.ModifyOrder(&order.Modify{AssetType: asset.Spot})
 	if err == nil {
 		t.Error("ModifyOrder() Expected error")
 	}
@@ -347,7 +388,7 @@ func TestWithdraw(t *testing.T) {
 		Amount:      -1,
 		Currency:    currency.BTC,
 		Description: "WITHDRAW IT ALL",
-		Crypto: &withdraw.CryptoRequest{
+		Crypto: withdraw.CryptoRequest{
 			Address: core.BitcoinDonationAddress,
 		},
 	}
@@ -407,19 +448,11 @@ func setupWsAuth(t *testing.T) {
 		return
 	}
 	if !h.Websocket.IsEnabled() && !h.API.AuthenticatedWebsocketSupport || !areTestAPIKeysSet() {
-		t.Skip(wshandler.WebsocketNotEnabled)
+		t.Skip(stream.WebsocketNotEnabled)
 	}
-	h.Websocket.DataHandler = sharedtestvalues.GetWebsocketInterfaceChannelOverride()
-	h.Websocket.TrafficAlert = sharedtestvalues.GetWebsocketStructChannelOverride()
-	h.WebsocketConn = &wshandler.WebsocketConnection{
-		ExchangeName:         h.Name,
-		URL:                  hitbtcWebsocketAddress,
-		Verbose:              h.Verbose,
-		ResponseMaxLimit:     exchange.DefaultWebsocketResponseMaxLimit,
-		ResponseCheckTimeout: exchange.DefaultWebsocketResponseCheckTimeout,
-	}
+
 	var dialer websocket.Dialer
-	err := h.WebsocketConn.Dial(&dialer, http.Header{})
+	err := h.Websocket.Conn.Dial(&dialer, http.Header{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -914,6 +947,76 @@ func TestWsTrades(t *testing.T) {
   }
 }    `)
 	err = h.wsHandleData(pressXToJSON)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func Test_FormatExchangeKlineInterval(t *testing.T) {
+	testCases := []struct {
+		name     string
+		interval kline.Interval
+		output   string
+	}{
+		{
+			"OneMin",
+			kline.OneMin,
+			"M1",
+		},
+		{
+			"OneDay",
+			kline.OneDay,
+			"D1",
+		},
+		{
+			"SevenDay",
+			kline.SevenDay,
+			"D7",
+		},
+		{
+			"AllOther",
+			kline.OneMonth,
+			"",
+		},
+	}
+
+	for x := range testCases {
+		test := testCases[x]
+
+		t.Run(test.name, func(t *testing.T) {
+			ret := h.FormatExchangeKlineInterval(test.interval)
+
+			if ret != test.output {
+				t.Fatalf("unexpected result return expected: %v received: %v", test.output, ret)
+			}
+		})
+	}
+}
+
+func TestGetRecentTrades(t *testing.T) {
+	t.Parallel()
+	currencyPair, err := currency.NewPairFromString("BTCUSD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = h.GetRecentTrades(currencyPair, asset.Spot)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestGetHistoricTrades(t *testing.T) {
+	t.Parallel()
+	currencyPair, err := currency.NewPairFromString("BTCUSD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = h.GetHistoricTrades(currencyPair, asset.Spot, time.Now().Add(-time.Minute*15), time.Now())
+	if err != nil && err != common.ErrFunctionNotSupported {
+		t.Error(err)
+	}
+	// longer term
+	_, err = h.GetHistoricTrades(currencyPair, asset.Spot, time.Now().Add(-time.Minute*60*200), time.Now().Add(-time.Minute*60*199))
 	if err != nil {
 		t.Error(err)
 	}

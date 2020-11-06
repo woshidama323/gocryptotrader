@@ -5,16 +5,20 @@ import (
 	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/thrasher-corp/gocryptotrader/common"
+	"github.com/thrasher-corp/gocryptotrader/common/convert"
 	"github.com/thrasher-corp/gocryptotrader/config"
 	"github.com/thrasher-corp/gocryptotrader/core"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/websocket/wshandler"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
 
@@ -44,7 +48,7 @@ func TestMain(m *testing.M) {
 	gConf.API.AuthenticatedWebsocketSupport = true
 	gConf.API.Credentials.Key = apiKey
 	gConf.API.Credentials.Secret = apiSecret
-
+	g.Websocket = sharedtestvalues.NewTestWebsocket()
 	err = g.Setup(gConf)
 	if err != nil {
 		log.Fatal("GateIO setup error", err)
@@ -72,14 +76,14 @@ func TestGetMarketInfo(t *testing.T) {
 func TestSpotNewOrder(t *testing.T) {
 	t.Parallel()
 
-	if !areTestAPIKeysSet() && !canManipulateRealOrders {
+	if !areTestAPIKeysSet() || !canManipulateRealOrders {
 		t.Skip()
 	}
 
 	_, err := g.SpotNewOrder(SpotNewOrderRequestParams{
 		Symbol: "btc_usdt",
-		Amount: 1.1,
-		Price:  10.1,
+		Amount: -1,
+		Price:  100000,
 		Type:   order.Sell.Lower(),
 	})
 	if err != nil {
@@ -90,7 +94,7 @@ func TestSpotNewOrder(t *testing.T) {
 func TestCancelExistingOrder(t *testing.T) {
 	t.Parallel()
 
-	if !areTestAPIKeysSet() && !canManipulateRealOrders {
+	if !areTestAPIKeysSet() || !canManipulateRealOrders {
 		t.Skip()
 	}
 
@@ -147,11 +151,10 @@ func TestGetOrderbook(t *testing.T) {
 
 func TestGetSpotKline(t *testing.T) {
 	t.Parallel()
-
 	_, err := g.GetSpotKline(KlinesRequestParams{
 		Symbol:   "btc_usdt",
-		GroupSec: TimeIntervalFiveMinutes, // 5 minutes or less
-		HourSize: 1,                       // 1 hour data
+		GroupSec: "5", // 5 minutes or less
+		HourSize: 1,   // 1 hour data
 	})
 
 	if err != nil {
@@ -169,6 +172,14 @@ func setFeeBuilder() *exchange.FeeBuilder {
 		PurchasePrice:       1,
 		FiatCurrency:        currency.USD,
 		BankTransactionType: exchange.WireTransfer,
+	}
+}
+
+func TestGetTradeHistory(t *testing.T) {
+	_, err := g.GetTrades(currency.NewPairWithDelimiter(currency.BTC.String(),
+		currency.USDT.String(), "_").String())
+	if err != nil {
+		t.Error(err)
 	}
 }
 
@@ -319,11 +330,12 @@ func TestSubmitOrder(t *testing.T) {
 			Base:      currency.LTC,
 			Quote:     currency.BTC,
 		},
-		Side:     order.Buy,
-		Type:     order.Limit,
-		Price:    1,
-		Amount:   1,
-		ClientID: "meowOrder",
+		Side:      order.Buy,
+		Type:      order.Limit,
+		Price:     1,
+		Amount:    1,
+		ClientID:  "meowOrder",
+		AssetType: asset.Spot,
 	}
 	response, err := g.SubmitOrder(orderSubmission)
 	if areTestAPIKeysSet() && (err != nil || !response.IsOrderPlaced) {
@@ -344,6 +356,7 @@ func TestCancelExchangeOrder(t *testing.T) {
 		WalletAddress: core.BitcoinDonationAddress,
 		AccountID:     "1",
 		Pair:          currencyPair,
+		AssetType:     asset.Spot,
 	}
 
 	err := g.CancelOrder(orderCancellation)
@@ -366,6 +379,7 @@ func TestCancelAllExchangeOrders(t *testing.T) {
 		WalletAddress: core.BitcoinDonationAddress,
 		AccountID:     "1",
 		Pair:          currencyPair,
+		AssetType:     asset.Spot,
 	}
 
 	resp, err := g.CancelAllOrders(orderCancellation)
@@ -400,7 +414,7 @@ func TestModifyOrder(t *testing.T) {
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
-	_, err := g.ModifyOrder(&order.Modify{})
+	_, err := g.ModifyOrder(&order.Modify{AssetType: asset.Spot})
 	if err == nil {
 		t.Error("ModifyOrder() Expected error")
 	}
@@ -411,7 +425,7 @@ func TestWithdraw(t *testing.T) {
 		Amount:      -1,
 		Currency:    currency.BTC,
 		Description: "WITHDRAW IT ALL",
-		Crypto: &withdraw.CryptoRequest{
+		Crypto: withdraw.CryptoRequest{
 			Address: core.BitcoinDonationAddress,
 		},
 	}
@@ -471,7 +485,7 @@ func TestGetOrderInfo(t *testing.T) {
 		t.Skip("no API keys set skipping test")
 	}
 
-	_, err := g.GetOrderInfo("917591554")
+	_, err := g.GetOrderInfo("917591554", currency.Pair{}, asset.Spot)
 	if err != nil {
 		if err.Error() != "no order found with id 917591554" && err.Error() != "failed to get open orders" {
 			t.Fatalf("GetOrderInfo() returned an error skipping test: %v", err)
@@ -482,28 +496,17 @@ func TestGetOrderInfo(t *testing.T) {
 // TestWsGetBalance dials websocket, sends balance request.
 func TestWsGetBalance(t *testing.T) {
 	if !g.Websocket.IsEnabled() && !g.API.AuthenticatedWebsocketSupport || !areTestAPIKeysSet() {
-		t.Skip(wshandler.WebsocketNotEnabled)
-	}
-	g.WebsocketConn = &wshandler.WebsocketConnection{
-		ExchangeName:         g.Name,
-		URL:                  gateioWebsocketEndpoint,
-		Verbose:              g.Verbose,
-		RateLimit:            gateioWebsocketRateLimit,
-		ResponseMaxLimit:     exchange.DefaultWebsocketResponseMaxLimit,
-		ResponseCheckTimeout: exchange.DefaultWebsocketResponseCheckTimeout,
+		t.Skip(stream.WebsocketNotEnabled)
 	}
 	var dialer websocket.Dialer
-	err := g.WebsocketConn.Dial(&dialer, http.Header{})
+	err := g.Websocket.Conn.Dial(&dialer, http.Header{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	go g.wsReadData()
-	resp, err := g.wsServerSignIn()
+	err = g.wsServerSignIn()
 	if err != nil {
 		t.Fatal(err)
-	}
-	if resp.Result.Status != "success" {
-		t.Fatal("Unsuccessful login")
 	}
 	_, err = g.wsGetBalance([]string{"EOS", "BTC"})
 	if err != nil {
@@ -518,30 +521,19 @@ func TestWsGetBalance(t *testing.T) {
 // TestWsGetOrderInfo dials websocket, sends order info request.
 func TestWsGetOrderInfo(t *testing.T) {
 	if !g.Websocket.IsEnabled() && !g.API.AuthenticatedWebsocketSupport || !areTestAPIKeysSet() {
-		t.Skip(wshandler.WebsocketNotEnabled)
-	}
-	g.WebsocketConn = &wshandler.WebsocketConnection{
-		ExchangeName:         g.Name,
-		URL:                  gateioWebsocketEndpoint,
-		Verbose:              g.Verbose,
-		RateLimit:            gateioWebsocketRateLimit,
-		ResponseMaxLimit:     exchange.DefaultWebsocketResponseMaxLimit,
-		ResponseCheckTimeout: exchange.DefaultWebsocketResponseCheckTimeout,
+		t.Skip(stream.WebsocketNotEnabled)
 	}
 	var dialer websocket.Dialer
-	err := g.WebsocketConn.Dial(&dialer, http.Header{})
+	err := g.Websocket.Conn.Dial(&dialer, http.Header{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	go g.wsReadData()
-	resp, err := g.wsServerSignIn()
+	err = g.wsServerSignIn()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.Result.Status != "success" {
-		t.Fatal("Unsuccessful login")
-	}
-	_, err = g.wsGetOrderInfo("EOS_USDT", 0, 1000)
+	_, err = g.wsGetOrderInfo("EOS_USDT", 0, 100)
 	if err != nil {
 		t.Error(err)
 	}
@@ -551,48 +543,34 @@ func setupWSTestAuth(t *testing.T) {
 	if wsSetupRan {
 		return
 	}
-	if !g.Websocket.IsEnabled() && !g.API.AuthenticatedWebsocketSupport {
-		t.Skip(wshandler.WebsocketNotEnabled)
+	if !g.Websocket.IsEnabled() && !g.API.AuthenticatedWebsocketSupport || !areTestAPIKeysSet() {
+		t.Skip(stream.WebsocketNotEnabled)
 	}
-	g.WebsocketConn = &wshandler.WebsocketConnection{
-		ExchangeName:         g.Name,
-		URL:                  gateioWebsocketEndpoint,
-		Verbose:              g.Verbose,
-		RateLimit:            gateioWebsocketRateLimit,
-		ResponseMaxLimit:     exchange.DefaultWebsocketResponseMaxLimit,
-		ResponseCheckTimeout: exchange.DefaultWebsocketResponseCheckTimeout,
-	}
-	var dialer websocket.Dialer
-	err := g.WebsocketConn.Dial(&dialer, http.Header{})
-
-	g.Websocket.DataHandler = sharedtestvalues.GetWebsocketInterfaceChannelOverride()
-	g.Websocket.TrafficAlert = sharedtestvalues.GetWebsocketStructChannelOverride()
+	err := g.Websocket.Connect()
 	if err != nil {
 		t.Fatal(err)
 	}
-	go g.wsReadData()
 	wsSetupRan = true
-}
-
-// TestWsUnsubscribe dials websocket, sends an unsubscribe request.
-func TestWsUnsubscribe(t *testing.T) {
-	setupWSTestAuth(t)
-	g.Verbose = true
-	err := g.Unsubscribe(wshandler.WebsocketChannelSubscription{
-		Channel:  "ticker.subscribe",
-		Currency: currency.NewPairWithDelimiter(currency.BTC.String(), currency.USDT.String(), "_"),
-	})
-	if err != nil {
-		t.Error(err)
-	}
 }
 
 // TestWsSubscribe dials websocket, sends a subscribe request.
 func TestWsSubscribe(t *testing.T) {
 	setupWSTestAuth(t)
-	err := g.Subscribe(wshandler.WebsocketChannelSubscription{
-		Channel:  "ticker.subscribe",
-		Currency: currency.NewPairWithDelimiter(currency.BTC.String(), currency.USDT.String(), "_"),
+	err := g.Subscribe([]stream.ChannelSubscription{
+		{
+			Channel:  "ticker.subscribe",
+			Currency: currency.NewPairWithDelimiter(currency.BTC.String(), currency.USDT.String(), "_"),
+		},
+	})
+	if err != nil {
+		t.Error(err)
+	}
+
+	err = g.Unsubscribe([]stream.ChannelSubscription{
+		{
+			Channel:  "ticker.subscribe",
+			Currency: currency.NewPairWithDelimiter(currency.BTC.String(), currency.USDT.String(), "_"),
+		},
 	})
 	if err != nil {
 		t.Error(err)
@@ -601,12 +579,12 @@ func TestWsSubscribe(t *testing.T) {
 
 func TestWsTicker(t *testing.T) {
 	pressXToJSON := []byte(`{
-    "method": "ticker.update", 
-    "params": 
+    "method": "ticker.update",
+    "params":
         [
-            "BTC_USDT", 
+            "BTC_USDT",
                 {
-                    "period": 86400, 
+                    "period": 86400,
                     "open": "0",
                     "close": "0",
                     "high": "0",
@@ -628,9 +606,9 @@ func TestWsTicker(t *testing.T) {
 func TestWsTrade(t *testing.T) {
 	pressXToJSON := []byte(`{
     "method": "trades.update",
-    "params": 
+    "params":
         [
-             "BTC_USDT", 
+             "BTC_USDT",
              [
                  {
                  "id": 7172173,
@@ -652,23 +630,23 @@ func TestWsTrade(t *testing.T) {
 
 func TestWsDepth(t *testing.T) {
 	pressXToJSON := []byte(`{
-    "method": "depth.update", 
+    "method": "depth.update",
     "params": [
-        true, 
+        true,
         {
             "asks": [
-                [                    
+                [
                     "8000.00",
                     "9.6250"
                 ]
             ],
-            "bids": [                
-                [                    
+            "bids": [
+                [
                     "8000.00",
                     "9.6250"
-                ]                
+                ]
             ]
-         }, 
+         },
          "BTC_USDT"
     ],
     "id": null
@@ -734,12 +712,132 @@ func TestWsOrderUpdate(t *testing.T) {
 
 func TestWsBalanceUpdate(t *testing.T) {
 	pressXToJSON := []byte(`{
-    "method": "balance.update", 
+    "method": "balance.update",
     "params": [{"EOS": {"available": "96.765323611874", "freeze": "11"}}],
     "id": 1234
 }`)
 	err := g.wsHandleData(pressXToJSON)
 	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestParseTime(t *testing.T) {
+	// Test REST example
+	r := convert.TimeFromUnixTimestampDecimal(1574846296.995313).UTC()
+	if r.Year() != 2019 ||
+		r.Month().String() != "November" ||
+		r.Day() != 27 {
+		t.Error("unexpected result")
+	}
+
+	// Test websocket example
+	r = convert.TimeFromUnixTimestampDecimal(1523887354.256974).UTC()
+	if r.Year() != 2018 ||
+		r.Month().String() != "April" ||
+		r.Day() != 16 {
+		t.Error("unexpected result")
+	}
+}
+
+func TestGetHistoricCandles(t *testing.T) {
+	currencyPair, err := currency.NewPairFromString("BTC_USDT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	startTime := time.Now().Add(-time.Hour * 6)
+	_, err = g.GetHistoricCandles(currencyPair, asset.Spot, startTime, time.Now(), kline.OneMin)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGetHistoricCandlesExtended(t *testing.T) {
+	currencyPair, err := currency.NewPairFromString("BTC_USDT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	startTime := time.Now().Add(-time.Hour * 6)
+	_, err = g.GetHistoricCandlesExtended(currencyPair, asset.Spot, startTime, time.Now(), kline.OneMin)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func Test_FormatExchangeKlineInterval(t *testing.T) {
+	testCases := []struct {
+		name     string
+		interval kline.Interval
+		output   string
+	}{
+		{
+			"OneMin",
+			kline.OneMin,
+			"60",
+		},
+		{
+			"OneDay",
+			kline.OneDay,
+			"86400",
+		},
+	}
+
+	for x := range testCases {
+		test := testCases[x]
+
+		t.Run(test.name, func(t *testing.T) {
+			ret := g.FormatExchangeKlineInterval(test.interval)
+
+			if ret != test.output {
+				t.Fatalf("unexpected result return expected: %v received: %v", test.output, ret)
+			}
+		})
+	}
+}
+
+func TestGenerateDefaultSubscriptions(t *testing.T) {
+	err := g.CurrencyPairs.EnablePair(asset.Spot, currency.NewPair(
+		currency.LTC,
+		currency.USDT,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	subs, err := g.GenerateDefaultSubscriptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	payload, err := g.generatePayload(subs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(payload) != 4 {
+		t.Fatal("unexpected payload length")
+	}
+}
+
+func TestGetRecentTrades(t *testing.T) {
+	t.Parallel()
+	currencyPair, err := currency.NewPairFromString("btc_usdt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = g.GetRecentTrades(currencyPair, asset.Spot)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestGetHistoricTrades(t *testing.T) {
+	t.Parallel()
+	currencyPair, err := currency.NewPairFromString("btc_usdt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = g.GetHistoricTrades(currencyPair, asset.Spot, time.Now().Add(-time.Minute*15), time.Now())
+	if err != nil && err != common.ErrFunctionNotSupported {
 		t.Error(err)
 	}
 }

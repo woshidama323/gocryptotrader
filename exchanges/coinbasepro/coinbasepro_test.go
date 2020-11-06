@@ -8,14 +8,17 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/thrasher-corp/gocryptotrader/common"
+	"github.com/thrasher-corp/gocryptotrader/common/convert"
 	"github.com/thrasher-corp/gocryptotrader/config"
 	"github.com/thrasher-corp/gocryptotrader/core"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/websocket/wshandler"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/banking"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
@@ -47,12 +50,11 @@ func TestMain(m *testing.M) {
 	gdxConfig.API.Credentials.ClientID = clientID
 	gdxConfig.API.AuthenticatedSupport = true
 	gdxConfig.API.AuthenticatedWebsocketSupport = true
+	c.Websocket = sharedtestvalues.NewTestWebsocket()
 	err = c.Setup(gdxConfig)
 	if err != nil {
 		log.Fatal("CoinbasePro setup error", err)
 	}
-	c.Websocket.DataHandler = sharedtestvalues.GetWebsocketInterfaceChannelOverride()
-	c.Websocket.TrafficAlert = sharedtestvalues.GetWebsocketStructChannelOverride()
 	os.Exit(m.Run())
 }
 
@@ -78,11 +80,21 @@ func TestGetTrades(t *testing.T) {
 }
 
 func TestGetHistoricRatesGranularityCheck(t *testing.T) {
-	end := time.Now().UTC()
-	start := end.Add(-time.Hour * 24)
-	p := currency.NewPair(currency.BTC, currency.USD)
+	end := time.Now()
+	start := end.Add(-time.Hour * 2)
+	p := currency.NewPairWithDelimiter("BTC", "USD", "-")
+	_, err := c.GetHistoricCandles(p, asset.Spot, start, end, kline.OneHour)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
 
-	_, err := c.GetHistoricCandles(p, asset.Spot, start, end, time.Hour)
+func TestCoinbasePro_GetHistoricCandlesExtended(t *testing.T) {
+	start := time.Unix(1546300800, 0)
+	end := time.Unix(1577836799, 0)
+
+	p := currency.NewPairWithDelimiter("BTC", "USD", "-")
+	_, err := c.GetHistoricCandlesExtended(p, asset.Spot, start, end, kline.OneDay)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,10 +174,6 @@ func TestAuthRequests(t *testing.T) {
 		t.Error("Expecting error")
 	}
 	_, err = c.GetFills("", "")
-	if err == nil {
-		t.Error("Expecting error")
-	}
-	_, err = c.GetFundingRecords("rejected")
 	if err == nil {
 		t.Error("Expecting error")
 	}
@@ -431,11 +439,12 @@ func TestSubmitOrder(t *testing.T) {
 			Base:      currency.BTC,
 			Quote:     currency.USD,
 		},
-		Side:     order.Buy,
-		Type:     order.Limit,
-		Price:    1,
-		Amount:   1,
-		ClientID: "meowOrder",
+		Side:      order.Buy,
+		Type:      order.Limit,
+		Price:     1,
+		Amount:    1,
+		ClientID:  "meowOrder",
+		AssetType: asset.Spot,
 	}
 	response, err := c.SubmitOrder(orderSubmission)
 	if areTestAPIKeysSet() && (err != nil || !response.IsOrderPlaced) {
@@ -456,6 +465,7 @@ func TestCancelExchangeOrder(t *testing.T) {
 		WalletAddress: core.BitcoinDonationAddress,
 		AccountID:     "1",
 		Pair:          currencyPair,
+		AssetType:     asset.Spot,
 	}
 
 	err := c.CancelOrder(orderCancellation)
@@ -478,6 +488,7 @@ func TestCancelAllExchangeOrders(t *testing.T) {
 		WalletAddress: core.BitcoinDonationAddress,
 		AccountID:     "1",
 		Pair:          currencyPair,
+		AssetType:     asset.Spot,
 	}
 
 	resp, err := c.CancelAllOrders(orderCancellation)
@@ -498,7 +509,7 @@ func TestModifyOrder(t *testing.T) {
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
-	_, err := c.ModifyOrder(&order.Modify{})
+	_, err := c.ModifyOrder(&order.Modify{AssetType: asset.Spot})
 	if err == nil {
 		t.Error("ModifyOrder() Expected error")
 	}
@@ -509,7 +520,7 @@ func TestWithdraw(t *testing.T) {
 		Amount:      -1,
 		Currency:    currency.BTC,
 		Description: "WITHDRAW IT ALL",
-		Crypto: &withdraw.CryptoRequest{
+		Crypto: withdraw.CryptoRequest{
 			Address: core.BitcoinDonationAddress,
 		},
 	}
@@ -535,8 +546,8 @@ func TestWithdrawFiat(t *testing.T) {
 	var withdrawFiatRequest = withdraw.Request{
 		Amount:   100,
 		Currency: currency.USD,
-		Fiat: &withdraw.FiatRequest{
-			Bank: &banking.Account{
+		Fiat: withdraw.FiatRequest{
+			Bank: banking.Account{
 				BankName: "Federal Reserve Bank",
 			},
 		},
@@ -559,8 +570,8 @@ func TestWithdrawInternationalBank(t *testing.T) {
 	var withdrawFiatRequest = withdraw.Request{
 		Amount:   100,
 		Currency: currency.USD,
-		Fiat: &withdraw.FiatRequest{
-			Bank: &banking.Account{
+		Fiat: withdraw.FiatRequest{
+			Bank: banking.Account{
 				BankName: "Federal Reserve Bank",
 			},
 		},
@@ -585,26 +596,24 @@ func TestGetDepositAddress(t *testing.T) {
 // TestWsAuth dials websocket, sends login request.
 func TestWsAuth(t *testing.T) {
 	if !c.Websocket.IsEnabled() && !c.API.AuthenticatedWebsocketSupport || !areTestAPIKeysSet() {
-		t.Skip(wshandler.WebsocketNotEnabled)
-	}
-	c.WebsocketConn = &wshandler.WebsocketConnection{
-		ExchangeName:         c.Name,
-		URL:                  c.Websocket.GetWebsocketURL(),
-		Verbose:              c.Verbose,
-		ResponseMaxLimit:     exchange.DefaultWebsocketResponseMaxLimit,
-		ResponseCheckTimeout: exchange.DefaultWebsocketResponseCheckTimeout,
+		t.Skip(stream.WebsocketNotEnabled)
 	}
 	var dialer websocket.Dialer
-	err := c.WebsocketConn.Dial(&dialer, http.Header{})
+	err := c.Websocket.Conn.Dial(&dialer, http.Header{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.Websocket.DataHandler = sharedtestvalues.GetWebsocketInterfaceChannelOverride()
-	c.Websocket.TrafficAlert = sharedtestvalues.GetWebsocketStructChannelOverride()
 	go c.wsReadData()
-	err = c.Subscribe(wshandler.WebsocketChannelSubscription{
-		Channel:  "user",
-		Currency: currency.NewPairFromString(testPair),
+
+	p, err := currency.NewPairFromString(testPair)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = c.Subscribe([]stream.ChannelSubscription{
+		{
+			Channel:  "user",
+			Currency: p,
+		},
 	})
 	if err != nil {
 		t.Error(err)
@@ -923,5 +932,104 @@ func TestStatusToStandardStatus(t *testing.T) {
 		if result != testCases[i].Result {
 			t.Errorf("Exepcted: %v, received: %v", testCases[i].Result, result)
 		}
+	}
+}
+
+func TestParseTime(t *testing.T) {
+	// Rest examples use 2014-11-07T22:19:28.578544Z" and can be safely
+	// unmarhsalled into time.Time
+
+	// All events except for activate use the above, in the below test
+	// we'll use their API docs example
+	r := convert.TimeFromUnixTimestampDecimal(1483736448.299000).UTC()
+	if r.Year() != 2017 ||
+		r.Month().String() != "January" ||
+		r.Day() != 6 {
+		t.Error("unexpected result")
+	}
+}
+
+func TestCheckInterval(t *testing.T) {
+	interval := time.Minute
+	i, err := checkInterval(interval)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i != 60 {
+		t.Fatal("incorrect return")
+	}
+	interval = time.Minute * 5
+	i, err = checkInterval(interval)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i != 300 {
+		t.Fatal("incorrect return")
+	}
+
+	interval = time.Minute * 15
+	i, err = checkInterval(interval)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i != 900 {
+		t.Fatal("incorrect return")
+	}
+
+	interval = time.Hour
+	i, err = checkInterval(interval)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i != 3600 {
+		t.Fatal("incorrect return")
+	}
+
+	interval = time.Hour * 6
+	i, err = checkInterval(interval)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i != 21600 {
+		t.Fatal("incorrect return")
+	}
+
+	interval = time.Hour * 24
+	i, err = checkInterval(interval)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i != 86400 {
+		t.Fatal("incorrect return")
+	}
+
+	interval = time.Hour * 1337
+	_, err = checkInterval(interval)
+	if err == nil {
+		t.Fatal("error cannot be nil")
+	}
+}
+
+func TestGetRecentTrades(t *testing.T) {
+	t.Parallel()
+	currencyPair, err := currency.NewPairFromString(testPair)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.GetRecentTrades(currencyPair, asset.Spot)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestGetHistoricTrades(t *testing.T) {
+	t.Parallel()
+	currencyPair, err := currency.NewPairFromString(testPair)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.GetHistoricTrades(currencyPair, asset.Spot, time.Now().Add(-time.Minute*15), time.Now())
+	if err != nil && err != common.ErrFunctionNotSupported {
+		t.Error(err)
 	}
 }

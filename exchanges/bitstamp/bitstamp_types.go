@@ -205,7 +205,7 @@ type websocketTradeData struct {
 	Timestamp      int64   `json:"timestamp,string"`
 	Price          float64 `json:"price"`
 	Type           int     `json:"type"`
-	ID             int     `json:"id"`
+	ID             int64   `json:"id"`
 }
 
 type websocketOrderBookResponse struct {
@@ -218,4 +218,19 @@ type websocketOrderBook struct {
 	Bids           [][]string `json:"bids"`
 	Timestamp      int64      `json:"timestamp,string"`
 	Microtimestamp string     `json:"microtimestamp"`
+}
+
+// OHLCResponse holds returned candle data
+type OHLCResponse struct {
+	Data struct {
+		Pair  string `json:"pair"`
+		OHLCV []struct {
+			Timestamp int64   `json:"timestamp,string"`
+			Open      float64 `json:"open,string"`
+			High      float64 `json:"high,string"`
+			Low       float64 `json:"low,string"`
+			Close     float64 `json:"close,string"`
+			Volume    float64 `json:"volume,string"`
+		} `json:"ohlc"`
+	} `json:"data"`
 }

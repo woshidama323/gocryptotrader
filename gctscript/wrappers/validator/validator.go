@@ -96,20 +96,31 @@ func (w Wrapper) Pairs(exch string, _ bool, _ asset.Item) (*currency.Pairs, erro
 		return nil, errTestFailed
 	}
 
-	pairs := currency.NewPairsFromStrings([]string{"btc_usd", "btc_aud", "btc_ltc"})
+	pairs, err := currency.NewPairsFromStrings([]string{"btc_usd",
+		"btc_aud",
+		"btc_ltc"})
+	if err != nil {
+		return nil, err
+	}
 	return &pairs, nil
 }
 
 // QueryOrder validator for test execution/scripts
-func (w Wrapper) QueryOrder(exch, _ string) (*order.Detail, error) {
+func (w Wrapper) QueryOrder(exch, _ string, _ currency.Pair, _ asset.Item) (*order.Detail, error) {
 	if exch == exchError.String() {
 		return nil, errTestFailed
 	}
+
+	pair, err := currency.NewPairFromString("BTCAUD")
+	if err != nil {
+		return nil, err
+	}
+
 	return &order.Detail{
 		Exchange:        exch,
 		AccountID:       "hello",
 		ID:              "1",
-		Pair:            currency.NewPairFromString("BTCAUD"),
+		Pair:            pair,
 		Side:            "ask",
 		Type:            "limit",
 		Date:            time.Now(),
@@ -121,7 +132,6 @@ func (w Wrapper) QueryOrder(exch, _ string) (*order.Detail, error) {
 		Fee:             0,
 		Trades: []order.TradeHistory{
 			{
-				Timestamp:   time.Now(),
 				TID:         "",
 				Price:       1,
 				Amount:      2,
@@ -157,11 +167,20 @@ func (w Wrapper) SubmitOrder(o *order.Submit) (*order.SubmitResponse, error) {
 }
 
 // CancelOrder validator for test execution/scripts
-func (w Wrapper) CancelOrder(exch, orderid string) (bool, error) {
+func (w Wrapper) CancelOrder(exch, orderid string, cp currency.Pair, a asset.Item) (bool, error) {
 	if exch == exchError.String() {
 		return false, errTestFailed
 	}
-	return orderid != "false", nil
+	if orderid == "" {
+		return false, errTestFailed
+	}
+	if !cp.IsEmpty() && cp.IsInvalid() {
+		return false, errTestFailed
+	}
+	if a != "" && !a.IsValid() {
+		return false, errTestFailed
+	}
+	return true, nil
 }
 
 // AccountInformation validator for test execution/scripts
@@ -179,12 +198,11 @@ func (w Wrapper) AccountInformation(exch string) (account.Holdings, error) {
 					{
 						CurrencyName: currency.Code{
 							Item: &currency.Item{
-								ID:            0,
-								FullName:      "Bitcoin",
-								Symbol:        "BTC",
-								Role:          1,
-								AssocChain:    "",
-								AssocExchange: nil,
+								ID:         0,
+								FullName:   "Bitcoin",
+								Symbol:     "BTC",
+								Role:       1,
+								AssocChain: "",
 							},
 						},
 						TotalValue: 100,
@@ -206,25 +224,25 @@ func (w Wrapper) DepositAddress(exch string, _ currency.Code) (string, error) {
 }
 
 // WithdrawalCryptoFunds validator for test execution/scripts
-func (w Wrapper) WithdrawalCryptoFunds(exch string, _ *withdraw.Request) (out string, err error) {
-	if exch == exchError.String() {
-		return exch, errTestFailed
+func (w Wrapper) WithdrawalCryptoFunds(r *withdraw.Request) (out string, err error) {
+	if r.Exchange == exchError.String() {
+		return r.Exchange, errTestFailed
 	}
 
 	return "", nil
 }
 
 // WithdrawalFiatFunds validator for test execution/scripts
-func (w Wrapper) WithdrawalFiatFunds(exch, _ string, _ *withdraw.Request) (out string, err error) {
-	if exch == exchError.String() {
-		return exch, errTestFailed
+func (w Wrapper) WithdrawalFiatFunds(_ string, r *withdraw.Request) (out string, err error) {
+	if r.Exchange == exchError.String() {
+		return r.Exchange, errTestFailed
 	}
 
 	return "123", nil
 }
 
 // OHLCV returns open high low close volume candles for requested exchange/pair/asset/start & end time
-func (w Wrapper) OHLCV(exch string, p currency.Pair, a asset.Item, start, end time.Time, i time.Duration) (kline.Item, error) {
+func (w Wrapper) OHLCV(exch string, p currency.Pair, a asset.Item, start, end time.Time, i kline.Interval) (kline.Item, error) {
 	if exch == exchError.String() {
 		return kline.Item{}, errTestFailed
 	}
@@ -240,9 +258,9 @@ func (w Wrapper) OHLCV(exch string, p currency.Pair, a asset.Item, start, end ti
 	})
 
 	for x := 1; x < 200; x++ {
-		r := validatorLow + rand.Float64()*(validatorHigh-validatorLow)
+		r := validatorLow + rand.Float64()*(validatorHigh-validatorLow) // nolint:gosec // no need to import crypo/rand
 		candle := kline.Candle{
-			Time:   candles[x-1].Time.Add(-i),
+			Time:   candles[x-1].Time.Add(-i.Duration()),
 			Open:   r,
 			High:   r,
 			Low:    r,

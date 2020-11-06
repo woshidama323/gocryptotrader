@@ -25,12 +25,12 @@ type Exchange struct{}
 
 // Exchanges returns slice of all current exchanges
 func (e Exchange) Exchanges(enabledOnly bool) []string {
-	return engine.GetExchangeNames(enabledOnly)
+	return engine.Bot.GetExchangeNames(enabledOnly)
 }
 
 // GetExchange returns IBotExchange for exchange or error if exchange is not found
 func (e Exchange) GetExchange(exch string) (exchange.IBotExchange, error) {
-	ex := engine.GetExchangeByName(exch)
+	ex := engine.Bot.GetExchangeByName(exch)
 	if ex == nil {
 		return nil, fmt.Errorf("%v exchange not found", exch)
 	}
@@ -50,7 +50,7 @@ func (e Exchange) IsEnabled(exch string) bool {
 
 // Orderbook returns current orderbook requested exchange, pair and asset
 func (e Exchange) Orderbook(exch string, pair currency.Pair, item asset.Item) (*orderbook.Base, error) {
-	return engine.GetSpecificOrderbook(pair, exch, item)
+	return engine.Bot.GetSpecificOrderbook(pair, exch, item)
 }
 
 // Ticker returns ticker for provided currency pair & asset type
@@ -70,25 +70,25 @@ func (e Exchange) Pairs(exch string, enabledOnly bool, item asset.Item) (*curren
 		return nil, err
 	}
 
-	if enabledOnly {
-		return &x.CurrencyPairs.Get(item).Enabled, nil
+	ps, err := x.CurrencyPairs.Get(item)
+	if err != nil {
+		return nil, err
 	}
-	return &x.CurrencyPairs.Get(item).Available, nil
+
+	if enabledOnly {
+		return &ps.Enabled, nil
+	}
+	return &ps.Available, nil
 }
 
 // QueryOrder returns details of a valid exchange order
-func (e Exchange) QueryOrder(exch, orderID string) (*order.Detail, error) {
-	ex, err := e.GetExchange(exch)
+func (e Exchange) QueryOrder(exch, orderID string, pair currency.Pair, assetType asset.Item) (*order.Detail, error) {
+	o, err := engine.Bot.OrderManager.GetOrderInfo(exch, orderID, pair, assetType)
 	if err != nil {
 		return nil, err
 	}
 
-	r, err := ex.GetOrderInfo(orderID)
-	if err != nil {
-		return nil, err
-	}
-
-	return &r, nil
+	return &o, nil
 }
 
 // SubmitOrder submit new order on exchange
@@ -102,8 +102,8 @@ func (e Exchange) SubmitOrder(submit *order.Submit) (*order.SubmitResponse, erro
 }
 
 // CancelOrder wrapper to cancel order on exchange
-func (e Exchange) CancelOrder(exch, orderID string) (bool, error) {
-	orderDetails, err := e.QueryOrder(exch, orderID)
+func (e Exchange) CancelOrder(exch, orderID string, cp currency.Pair, a asset.Item) (bool, error) {
+	orderDetails, err := e.QueryOrder(exch, orderID, cp, a)
 	if err != nil {
 		return false, err
 	}
@@ -113,6 +113,8 @@ func (e Exchange) CancelOrder(exch, orderID string) (bool, error) {
 		ID:        orderDetails.ID,
 		Pair:      orderDetails.Pair,
 		Side:      orderDetails.Side,
+		AssetType: orderDetails.AssetType,
+		Exchange:  exch,
 	}
 
 	err = engine.Bot.OrderManager.Cancel(cancel)
@@ -147,8 +149,8 @@ func (e Exchange) DepositAddress(exch string, currencyCode currency.Code) (out s
 }
 
 // WithdrawalFiatFunds withdraw funds from exchange to requested fiat source
-func (e Exchange) WithdrawalFiatFunds(exch, bankAccountID string, request *withdraw.Request) (string, error) {
-	ex, err := e.GetExchange(exch)
+func (e Exchange) WithdrawalFiatFunds(bankAccountID string, request *withdraw.Request) (string, error) {
+	ex, err := e.GetExchange(request.Exchange)
 	if err != nil {
 		return "", err
 	}
@@ -161,7 +163,7 @@ func (e Exchange) WithdrawalFiatFunds(exch, bankAccountID string, request *withd
 		}
 	}
 
-	otp, err := engine.GetExchangeoOTPByName(exch)
+	otp, err := engine.Bot.GetExchangeoOTPByName(request.Exchange)
 	if err == nil {
 		otpValue, errParse := strconv.ParseInt(otp, 10, 64)
 		if errParse != nil {
@@ -169,7 +171,6 @@ func (e Exchange) WithdrawalFiatFunds(exch, bankAccountID string, request *withd
 		}
 		request.OneTimePassword = otpValue
 	}
-	request.Exchange = exch
 	request.Fiat.Bank.AccountName = v.AccountName
 	request.Fiat.Bank.AccountNumber = v.AccountNumber
 	request.Fiat.Bank.BankName = v.BankName
@@ -181,7 +182,7 @@ func (e Exchange) WithdrawalFiatFunds(exch, bankAccountID string, request *withd
 	request.Fiat.Bank.SWIFTCode = v.SWIFTCode
 	request.Fiat.Bank.IBAN = v.IBAN
 
-	resp, err := engine.SubmitWithdrawal(ex.GetName(), request)
+	resp, err := engine.SubmitWithdrawal(request)
 	if err != nil {
 		return "", err
 	}
@@ -189,13 +190,13 @@ func (e Exchange) WithdrawalFiatFunds(exch, bankAccountID string, request *withd
 }
 
 // WithdrawalCryptoFunds withdraw funds from exchange to requested Crypto source
-func (e Exchange) WithdrawalCryptoFunds(exch string, request *withdraw.Request) (out string, err error) {
-	ex, err := e.GetExchange(exch)
+func (e Exchange) WithdrawalCryptoFunds(request *withdraw.Request) (string, error) {
+	// Checks if exchange is enabled or not so we don't call OTP generation
+	_, err := e.GetExchange(request.Exchange)
 	if err != nil {
 		return "", err
 	}
-
-	otp, err := engine.GetExchangeoOTPByName(exch)
+	otp, err := engine.Bot.GetExchangeoOTPByName(request.Exchange)
 	if err == nil {
 		v, errParse := strconv.ParseInt(otp, 10, 64)
 		if errParse != nil {
@@ -204,7 +205,7 @@ func (e Exchange) WithdrawalCryptoFunds(exch string, request *withdraw.Request) 
 		request.OneTimePassword = v
 	}
 
-	resp, err := engine.SubmitWithdrawal(ex.GetName(), request)
+	resp, err := engine.SubmitWithdrawal(request)
 	if err != nil {
 		return "", err
 	}
@@ -212,12 +213,12 @@ func (e Exchange) WithdrawalCryptoFunds(exch string, request *withdraw.Request) 
 }
 
 // OHLCV returns open high low close volume candles for requested exchange/pair/asset/start & end time
-func (e Exchange) OHLCV(exch string, pair currency.Pair, item asset.Item, start, end time.Time, interval time.Duration) (kline.Item, error) {
+func (e Exchange) OHLCV(exch string, pair currency.Pair, item asset.Item, start, end time.Time, interval kline.Interval) (kline.Item, error) {
 	ex, err := e.GetExchange(exch)
 	if err != nil {
 		return kline.Item{}, err
 	}
-	ret, err := ex.GetHistoricCandles(pair, item, start, end, interval)
+	ret, err := ex.GetHistoricCandlesExtended(pair, item, start, end, interval)
 	if err != nil {
 		return kline.Item{}, err
 	}
@@ -225,6 +226,8 @@ func (e Exchange) OHLCV(exch string, pair currency.Pair, item asset.Item, start,
 	sort.Slice(ret.Candles, func(i, j int) bool {
 		return ret.Candles[i].Time.Before(ret.Candles[j].Time)
 	})
+
+	ret.FormatDates()
 
 	return ret, nil
 }

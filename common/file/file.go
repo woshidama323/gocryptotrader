@@ -24,15 +24,46 @@ func Write(file string, data []byte) error {
 	return ioutil.WriteFile(file, data, 0770)
 }
 
+// Writer creates a writer to a file or returns an error if it fails. This
+// func also ensures that all files are set to this permission (only rw access
+// for the running user and the group the user is a member of)
+func Writer(file string) (*os.File, error) {
+	basePath := filepath.Dir(file)
+	if !Exists(basePath) {
+		if err := os.MkdirAll(basePath, 0770); err != nil {
+			return nil, err
+		}
+	}
+	return os.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0770)
+}
+
 // Move moves a file from a source path to a destination path
 // This must be used across the codebase for compatibility with Docker volumes
 // and Golang (fixes Invalid cross-device link when using os.Rename)
 func Move(sourcePath, destPath string) error {
+	sourceAbs, err := filepath.Abs(sourcePath)
+	if err != nil {
+		return err
+	}
+	destAbs, err := filepath.Abs(destPath)
+	if err != nil {
+		return err
+	}
+	if sourceAbs == destAbs {
+		return nil
+	}
 	inputFile, err := os.Open(sourcePath)
 	if err != nil {
 		return err
 	}
 
+	destDir := filepath.Dir(destPath)
+	if !Exists(destDir) {
+		err = os.MkdirAll(destDir, 0770)
+		if err != nil {
+			return err
+		}
+	}
 	outputFile, err := os.Create(destPath)
 	if err != nil {
 		inputFile.Close()

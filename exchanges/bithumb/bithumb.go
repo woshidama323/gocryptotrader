@@ -26,6 +26,7 @@ const (
 	publicTicker             = "/public/ticker/"
 	publicOrderBook          = "/public/orderbook/"
 	publicTransactionHistory = "/public/transaction_history/"
+	publicCandleStick        = "/public/candlestick/"
 
 	privateAccInfo     = "/info/account"
 	privateAccBalance  = "/info/balance"
@@ -150,13 +151,18 @@ func (b *Bithumb) GetTransactionHistory(symbol string) (TransactionHistory, erro
 	return response, nil
 }
 
-// GetAccountInformation returns account information by singular currency
-func (b *Bithumb) GetAccountInformation(currency string) (Account, error) {
-	response := Account{}
+// GetAccountInformation returns account information based on the desired
+// order/payment currencies
+func (b *Bithumb) GetAccountInformation(orderCurrency, paymentCurrency string) (Account, error) {
+	var response Account
+	if orderCurrency == "" {
+		return response, errors.New("order currency must be set")
+	}
 
 	val := url.Values{}
-	if currency != "" {
-		val.Set("currency", currency)
+	val.Add("order_currency", orderCurrency)
+	if paymentCurrency != "" { // optional param, default is KRW
+		val.Add("payment_currency", paymentCurrency)
 	}
 
 	return response,
@@ -476,7 +482,7 @@ func (b *Bithumb) SendAuthenticatedHTTPRequest(path string, params url.Values, r
 
 	params.Set("endpoint", path)
 	payload := params.Encode()
-	hmacPayload := path + string(0) + payload + string(0) + n
+	hmacPayload := path + string('\x00') + payload + string('\x00') + n
 	hmac := crypto.GetHMAC(crypto.HashSHA512,
 		[]byte(hmacPayload),
 		[]byte(b.API.Credentials.Secret))
@@ -598,4 +604,11 @@ var errCode = map[string]string{
 	"5500": "Invalid Parameter",
 	"5600": "CUSTOM NOTICE (상황별 에러 메시지 출력) usually means transaction not allowed",
 	"5900": "Unknown Error",
+}
+
+// GetCandleStick returns candle stick data for requested pair
+func (b *Bithumb) GetCandleStick(symbol, interval string) (resp OHLCVResponse, err error) {
+	path := b.API.Endpoints.URL + publicCandleStick + symbol + "/" + interval
+	err = b.SendHTTPRequest(path, &resp)
+	return
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,7 +22,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/protocol"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/websocket/wshandler"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
 	"github.com/thrasher-corp/gocryptotrader/log"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
@@ -57,18 +58,11 @@ func (l *LocalBitcoins) SetDefaults() {
 	l.API.CredentialsValidator.RequiresKey = true
 	l.API.CredentialsValidator.RequiresSecret = true
 
-	l.CurrencyPairs = currency.PairsManager{
-		AssetTypes: asset.Items{
-			asset.Spot,
-		},
-
-		UseGlobalFormat: true,
-		RequestFormat: &currency.PairFormat{
-			Uppercase: true,
-		},
-		ConfigFormat: &currency.PairFormat{
-			Uppercase: true,
-		},
+	requestFmt := &currency.PairFormat{Uppercase: true}
+	configFmt := &currency.PairFormat{Uppercase: true}
+	err := l.SetGlobalPairsManager(requestFmt, configFmt, asset.Spot)
+	if err != nil {
+		log.Errorln(log.ExchangeSys, err)
 	}
 
 	l.Features = exchange.Features{
@@ -110,7 +104,6 @@ func (l *LocalBitcoins) Setup(exch *config.ExchangeConfig) error {
 		l.SetEnabled(false)
 		return nil
 	}
-
 	return l.SetupDefaults(exch)
 }
 
@@ -161,18 +154,24 @@ func (l *LocalBitcoins) UpdateTradablePairs(forceUpdate bool) error {
 	if err != nil {
 		return err
 	}
-	return l.UpdatePairs(currency.NewPairsFromStrings(pairs), asset.Spot, false, forceUpdate)
+	p, err := currency.NewPairsFromStrings(pairs)
+	if err != nil {
+		return err
+	}
+	return l.UpdatePairs(p, asset.Spot, false, forceUpdate)
 }
 
 // UpdateTicker updates and returns the ticker for a currency pair
 func (l *LocalBitcoins) UpdateTicker(p currency.Pair, assetType asset.Item) (*ticker.Price, error) {
-	tickerPrice := new(ticker.Price)
 	tick, err := l.GetTicker()
 	if err != nil {
-		return tickerPrice, err
+		return nil, err
 	}
 
-	pairs := l.GetEnabledPairs(assetType)
+	pairs, err := l.GetEnabledPairs(assetType)
+	if err != nil {
+		return nil, err
+	}
 	for i := range pairs {
 		curr := pairs[i].Quote.String()
 		if _, ok := tick[curr]; !ok {
@@ -182,10 +181,12 @@ func (l *LocalBitcoins) UpdateTicker(p currency.Pair, assetType asset.Item) (*ti
 		tp.Pair = pairs[i]
 		tp.Last = tick[curr].Avg24h
 		tp.Volume = tick[curr].VolumeBTC
+		tp.ExchangeName = l.Name
+		tp.AssetType = assetType
 
-		err = ticker.ProcessTicker(l.Name, &tp, assetType)
+		err = ticker.ProcessTicker(&tp)
 		if err != nil {
-			log.Error(log.Ticker, err)
+			return nil, err
 		}
 	}
 
@@ -285,15 +286,54 @@ func (l *LocalBitcoins) GetFundingHistory() ([]exchange.FundHistory, error) {
 	return nil, common.ErrFunctionNotSupported
 }
 
-// GetExchangeHistory returns historic trade data since exchange opening.
-func (l *LocalBitcoins) GetExchangeHistory(p currency.Pair, assetType asset.Item) ([]exchange.TradeHistory, error) {
-	return nil, common.ErrNotYetImplemented
+// GetRecentTrades returns the most recent trades for a currency and asset
+func (l *LocalBitcoins) GetRecentTrades(p currency.Pair, assetType asset.Item) ([]trade.Data, error) {
+	var err error
+	p, err = l.FormatExchangeCurrency(p, assetType)
+	if err != nil {
+		return nil, err
+	}
+	var tradeData []Trade
+	tradeData, err = l.GetTrades(p.Quote.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	var resp []trade.Data
+	for i := range tradeData {
+		resp = append(resp, trade.Data{
+			Exchange:     l.Name,
+			TID:          strconv.FormatInt(tradeData[i].TID, 10),
+			CurrencyPair: p,
+			AssetType:    assetType,
+			Price:        tradeData[i].Price,
+			Amount:       tradeData[i].Amount,
+			Timestamp:    time.Unix(tradeData[i].Date, 0),
+		})
+	}
+
+	err = l.AddTradesToBuffer(resp...)
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Sort(trade.ByDate(resp))
+	return resp, nil
+}
+
+// GetHistoricTrades returns historic trade data within the timeframe provided
+func (l *LocalBitcoins) GetHistoricTrades(_ currency.Pair, _ asset.Item, _, _ time.Time) ([]trade.Data, error) {
+	return nil, common.ErrFunctionNotSupported
 }
 
 // SubmitOrder submits a new order
 func (l *LocalBitcoins) SubmitOrder(s *order.Submit) (order.SubmitResponse, error) {
 	var submitOrderResponse order.SubmitResponse
 	if err := s.Validate(); err != nil {
+		return submitOrderResponse, err
+	}
+
+	fPair, err := l.FormatExchangeCurrency(s.Pair, s.AssetType)
+	if err != nil {
 		return submitOrderResponse, err
 	}
 
@@ -306,7 +346,7 @@ func (l *LocalBitcoins) SubmitOrder(s *order.Submit) (order.SubmitResponse, erro
 		City:                       "City",
 		Location:                   "Location",
 		CountryCode:                "US",
-		Currency:                   s.Pair.Quote.String(),
+		Currency:                   fPair.Quote.String(),
 		AccountInfo:                "-",
 		BankName:                   "Bank",
 		MSG:                        s.Side.String(),
@@ -320,7 +360,7 @@ func (l *LocalBitcoins) SubmitOrder(s *order.Submit) (order.SubmitResponse, erro
 	}
 
 	// Does not return any orderID, so create the add, then get the order
-	err := l.CreateAd(&params)
+	err = l.CreateAd(&params)
 	if err != nil {
 		return submitOrderResponse, err
 	}
@@ -367,8 +407,11 @@ func (l *LocalBitcoins) ModifyOrder(action *order.Modify) (string, error) {
 }
 
 // CancelOrder cancels an order by its corresponding ID number
-func (l *LocalBitcoins) CancelOrder(order *order.Cancel) error {
-	return l.DeleteAd(order.ID)
+func (l *LocalBitcoins) CancelOrder(o *order.Cancel) error {
+	if err := o.Validate(o.StandardCancel()); err != nil {
+		return err
+	}
+	return l.DeleteAd(o.ID)
 }
 
 // CancelAllOrders cancels all orders associated with a currency pair
@@ -392,8 +435,8 @@ func (l *LocalBitcoins) CancelAllOrders(_ *order.Cancel) (order.CancelAllRespons
 	return cancelAllOrdersResponse, nil
 }
 
-// GetOrderInfo returns information on a current open order
-func (l *LocalBitcoins) GetOrderInfo(orderID string) (order.Detail, error) {
+// GetOrderInfo returns order information based on order ID
+func (l *LocalBitcoins) GetOrderInfo(orderID string, pair currency.Pair, assetType asset.Item) (order.Detail, error) {
 	var orderDetail order.Detail
 	return orderDetail, common.ErrNotYetImplemented
 }
@@ -411,6 +454,10 @@ func (l *LocalBitcoins) GetDepositAddress(cryptocurrency currency.Code, _ string
 // WithdrawCryptocurrencyFunds returns a withdrawal ID when a withdrawal is
 // submitted
 func (l *LocalBitcoins) WithdrawCryptocurrencyFunds(withdrawRequest *withdraw.Request) (*withdraw.ExchangeResponse, error) {
+	if err := withdrawRequest.Validate(); err != nil {
+		return nil, err
+	}
+
 	err := l.WalletSend(withdrawRequest.Crypto.Address,
 		withdrawRequest.Amount,
 		withdrawRequest.PIN)
@@ -432,11 +479,6 @@ func (l *LocalBitcoins) WithdrawFiatFundsToInternationalBank(withdrawRequest *wi
 	return nil, common.ErrFunctionNotSupported
 }
 
-// GetWebsocket returns a pointer to the exchange websocket
-func (l *LocalBitcoins) GetWebsocket() (*wshandler.Websocket, error) {
-	return nil, common.ErrFunctionNotSupported
-}
-
 // GetFeeByType returns an estimate of fee based on type of transaction
 func (l *LocalBitcoins) GetFeeByType(feeBuilder *exchange.FeeBuilder) (float64, error) {
 	if (!l.AllowAuthenticatedRequest() || l.SkipAuthCheck) && // Todo check connection status
@@ -448,7 +490,16 @@ func (l *LocalBitcoins) GetFeeByType(feeBuilder *exchange.FeeBuilder) (float64, 
 
 // GetActiveOrders retrieves any orders that are active/open
 func (l *LocalBitcoins) GetActiveOrders(getOrdersRequest *order.GetOrdersRequest) ([]order.Detail, error) {
+	if err := getOrdersRequest.Validate(); err != nil {
+		return nil, err
+	}
+
 	resp, err := l.GetDashboardInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	format, err := l.GetPairFormat(asset.Spot, false)
 	if err != nil {
 		return nil, err
 	}
@@ -480,7 +531,7 @@ func (l *LocalBitcoins) GetActiveOrders(getOrdersRequest *order.GetOrdersRequest
 			Side:   side,
 			Pair: currency.NewPairWithDelimiter(currency.BTC.String(),
 				resp[i].Data.Currency,
-				l.GetPairFormat(asset.Spot, false).Delimiter),
+				format.Delimiter),
 			Exchange: l.Name,
 		})
 	}
@@ -495,6 +546,10 @@ func (l *LocalBitcoins) GetActiveOrders(getOrdersRequest *order.GetOrdersRequest
 // GetOrderHistory retrieves account order information
 // Can Limit response to specific order status
 func (l *LocalBitcoins) GetOrderHistory(getOrdersRequest *order.GetOrdersRequest) ([]order.Detail, error) {
+	if err := getOrdersRequest.Validate(); err != nil {
+		return nil, err
+	}
+
 	var allTrades []DashBoardInfo
 	resp, err := l.GetDashboardCancelledTrades()
 	if err != nil {
@@ -513,6 +568,11 @@ func (l *LocalBitcoins) GetOrderHistory(getOrdersRequest *order.GetOrdersRequest
 		return nil, err
 	}
 	allTrades = append(allTrades, resp...)
+
+	format, err := l.GetPairFormat(asset.Spot, false)
+	if err != nil {
+		return nil, err
+	}
 
 	var orders []order.Detail
 	for i := range allTrades {
@@ -557,7 +617,7 @@ func (l *LocalBitcoins) GetOrderHistory(getOrdersRequest *order.GetOrdersRequest
 			Status: order.Status(status),
 			Pair: currency.NewPairWithDelimiter(currency.BTC.String(),
 				allTrades[i].Data.Currency,
-				l.GetPairFormat(asset.Spot, false).Delimiter),
+				format.Delimiter),
 			Exchange: l.Name,
 		})
 	}
@@ -569,28 +629,6 @@ func (l *LocalBitcoins) GetOrderHistory(getOrdersRequest *order.GetOrdersRequest
 	return orders, nil
 }
 
-// SubscribeToWebsocketChannels appends to ChannelsToSubscribe
-// which lets websocket.manageSubscriptions handle subscribing
-func (l *LocalBitcoins) SubscribeToWebsocketChannels(channels []wshandler.WebsocketChannelSubscription) error {
-	return common.ErrFunctionNotSupported
-}
-
-// UnsubscribeToWebsocketChannels removes from ChannelsToSubscribe
-// which lets websocket.manageSubscriptions handle unsubscribing
-func (l *LocalBitcoins) UnsubscribeToWebsocketChannels(channels []wshandler.WebsocketChannelSubscription) error {
-	return common.ErrFunctionNotSupported
-}
-
-// GetSubscriptions returns a copied list of subscriptions
-func (l *LocalBitcoins) GetSubscriptions() ([]wshandler.WebsocketChannelSubscription, error) {
-	return nil, common.ErrFunctionNotSupported
-}
-
-// AuthenticateWebsocket sends an authentication message to the websocket
-func (l *LocalBitcoins) AuthenticateWebsocket() error {
-	return common.ErrFunctionNotSupported
-}
-
 // ValidateCredentials validates current credentials used for wrapper
 // functionality
 func (l *LocalBitcoins) ValidateCredentials() error {
@@ -599,6 +637,11 @@ func (l *LocalBitcoins) ValidateCredentials() error {
 }
 
 // GetHistoricCandles returns candles between a time period for a set time interval
-func (l *LocalBitcoins) GetHistoricCandles(pair currency.Pair, a asset.Item, start, end time.Time, interval time.Duration) (kline.Item, error) {
+func (l *LocalBitcoins) GetHistoricCandles(pair currency.Pair, a asset.Item, start, end time.Time, interval kline.Interval) (kline.Item, error) {
+	return kline.Item{}, common.ErrFunctionNotSupported
+}
+
+// GetHistoricCandlesExtended returns candles between a time period for a set time interval
+func (l *LocalBitcoins) GetHistoricCandlesExtended(pair currency.Pair, a asset.Item, start, end time.Time, interval kline.Interval) (kline.Item, error) {
 	return kline.Item{}, common.ErrFunctionNotSupported
 }

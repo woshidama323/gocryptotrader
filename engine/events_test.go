@@ -124,7 +124,6 @@ func TestProcessTicker(t *testing.T) {
 	if Bot == nil {
 		Bot = new(Engine)
 	}
-	Bot.Settings.Verbose = true
 
 	e := Event{
 		Exchange: testExchange,
@@ -138,10 +137,11 @@ func TestProcessTicker(t *testing.T) {
 
 	// now populate it with a 0 entry
 	tick := ticker.Price{
-		Pair: currency.NewPair(currency.BTC, currency.USD),
-		Last: 0,
+		Pair:         currency.NewPair(currency.BTC, currency.USD),
+		ExchangeName: e.Exchange,
+		AssetType:    e.Asset,
 	}
-	if err := ticker.ProcessTicker(e.Exchange, &tick, e.Asset); err != nil {
+	if err := ticker.ProcessTicker(&tick); err != nil {
 		t.Fatal("unexpected result:", err)
 	}
 	if r := e.processTicker(); r {
@@ -150,7 +150,7 @@ func TestProcessTicker(t *testing.T) {
 
 	// now populate it with a number > 0
 	tick.Last = 1337
-	if err := ticker.ProcessTicker(e.Exchange, &tick, e.Asset); err != nil {
+	if err := ticker.ProcessTicker(&tick); err != nil {
 		t.Fatal("unexpected result:", err)
 	}
 	if r := e.processTicker(); !r {
@@ -190,7 +190,6 @@ func TestProcessOrderbook(t *testing.T) {
 	if Bot == nil {
 		Bot = new(Engine)
 	}
-	Bot.Settings.Verbose = true
 
 	e := Event{
 		Exchange: testExchange,
@@ -225,7 +224,6 @@ func TestCheckEventCondition(t *testing.T) {
 	if Bot == nil {
 		Bot = new(Engine)
 	}
-	Bot.Settings.Verbose = true
 
 	e := Event{
 		Item: ItemPrice,

@@ -11,8 +11,9 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/websocket/wshandler"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
 
@@ -32,14 +33,15 @@ type IBotExchange interface {
 	UpdateOrderbook(p currency.Pair, a asset.Item) (*orderbook.Base, error)
 	FetchTradablePairs(a asset.Item) ([]string, error)
 	UpdateTradablePairs(forceUpdate bool) error
-	GetEnabledPairs(a asset.Item) currency.Pairs
-	GetAvailablePairs(a asset.Item) currency.Pairs
+	GetEnabledPairs(a asset.Item) (currency.Pairs, error)
+	GetAvailablePairs(a asset.Item) (currency.Pairs, error)
 	FetchAccountInfo() (account.Holdings, error)
 	UpdateAccountInfo() (account.Holdings, error)
 	GetAuthenticatedAPISupport(endpoint uint8) bool
 	SetPairs(pairs currency.Pairs, a asset.Item, enabled bool) error
 	GetAssetTypes() asset.Items
-	GetExchangeHistory(p currency.Pair, a asset.Item) ([]TradeHistory, error)
+	GetRecentTrades(p currency.Pair, a asset.Item) ([]trade.Data, error)
+	GetHistoricTrades(p currency.Pair, a asset.Item, startTime, endTime time.Time) ([]trade.Data, error)
 	SupportsAutoPairUpdates() bool
 	SupportsRESTTickerBatchUpdates() bool
 	GetFeeByType(f *FeeBuilder) (float64, error)
@@ -50,9 +52,9 @@ type IBotExchange interface {
 	GetFundingHistory() ([]FundHistory, error)
 	SubmitOrder(s *order.Submit) (order.SubmitResponse, error)
 	ModifyOrder(action *order.Modify) (string, error)
-	CancelOrder(order *order.Cancel) error
+	CancelOrder(o *order.Cancel) error
 	CancelAllOrders(orders *order.Cancel) (order.CancelAllResponse, error)
-	GetOrderInfo(orderID string) (order.Detail, error)
+	GetOrderInfo(orderID string, pair currency.Pair, assetType asset.Item) (order.Detail, error)
 	GetDepositAddress(cryptocurrency currency.Code, accountID string) (string, error)
 	GetOrderHistory(getOrdersRequest *order.GetOrdersRequest) ([]order.Detail, error)
 	GetActiveOrders(getOrdersRequest *order.GetOrdersRequest) ([]order.Detail, error)
@@ -62,18 +64,25 @@ type IBotExchange interface {
 	SetHTTPClientUserAgent(ua string)
 	GetHTTPClientUserAgent() string
 	SetClientProxyAddress(addr string) error
-	SupportsWebsocket() bool
 	SupportsREST() bool
-	IsWebsocketEnabled() bool
-	GetWebsocket() (*wshandler.Websocket, error)
-	SubscribeToWebsocketChannels(channels []wshandler.WebsocketChannelSubscription) error
-	UnsubscribeToWebsocketChannels(channels []wshandler.WebsocketChannelSubscription) error
-	AuthenticateWebsocket() error
-	GetSubscriptions() ([]wshandler.WebsocketChannelSubscription, error)
+	GetSubscriptions() ([]stream.ChannelSubscription, error)
 	GetDefaultConfig() (*config.ExchangeConfig, error)
 	GetBase() *Base
 	SupportsAsset(assetType asset.Item) bool
-	GetHistoricCandles(p currency.Pair, a asset.Item, timeStart, timeEnd time.Time, interval time.Duration) (kline.Item, error)
+	GetHistoricCandles(p currency.Pair, a asset.Item, timeStart, timeEnd time.Time, interval kline.Interval) (kline.Item, error)
+	GetHistoricCandlesExtended(p currency.Pair, a asset.Item, timeStart, timeEnd time.Time, interval kline.Interval) (kline.Item, error)
 	DisableRateLimiter() error
 	EnableRateLimiter() error
+
+	// Websocket specific wrapper functionality
+	// GetWebsocket returns a pointer to the websocket
+	GetWebsocket() (*stream.Websocket, error)
+	IsWebsocketEnabled() bool
+	SupportsWebsocket() bool
+	SubscribeToWebsocketChannels(channels []stream.ChannelSubscription) error
+	UnsubscribeToWebsocketChannels(channels []stream.ChannelSubscription) error
+	// FlushWebsocketChannels checks and flushes subscriptions if there is a
+	// pair,asset, url/proxy or subscription change
+	FlushWebsocketChannels() error
+	AuthenticateWebsocket() error
 }

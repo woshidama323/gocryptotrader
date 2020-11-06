@@ -91,16 +91,25 @@ func TestMove(t *testing.T) {
 			{InFile: "*", OutFile: "gct.txt", Write: true, ErrExpected: true},
 			{InFile: "*", OutFile: "gct.txt", Write: false, ErrExpected: true},
 			{InFile: "in.txt", OutFile: "*", Write: true, ErrExpected: true},
-			{InFile: "in.txt", OutFile: "gct.txt", Write: true, ErrExpected: false},
 		}
 	default:
 		tests = []testTable{
 			{InFile: "", OutFile: "gct.txt", Write: true, ErrExpected: true},
 			{InFile: "", OutFile: "gct.txt", Write: false, ErrExpected: true},
 			{InFile: "in.txt", OutFile: "", Write: true, ErrExpected: true},
-			{InFile: "in.txt", OutFile: "gct.txt", Write: true, ErrExpected: false},
 		}
 	}
+	tests = append(tests, []testTable{
+		{InFile: "in.txt", OutFile: "gct.txt", Write: true, ErrExpected: false},
+		{InFile: "in.txt", OutFile: "non-existing/gct.txt", Write: true, ErrExpected: false},
+		{InFile: "in.txt", OutFile: "in.txt", Write: true, ErrExpected: false},
+	}...)
+
+	if Exists("non-existing") {
+		t.Error("target 'non-existing' should not exist")
+	}
+	defer os.RemoveAll("non-existing")
+	defer os.Remove("in.txt")
 
 	for x := range tests {
 		err := tester(tests[x].InFile, tests[x].OutFile, tests[x].Write)
@@ -183,5 +192,94 @@ func TestWriteAsCSV(t *testing.T) {
 		if err != nil && !tests[x].ErrExpected {
 			t.Errorf("Test %d failed, unexpected err %s\n", x, err)
 		}
+	}
+}
+
+func TestWriter(t *testing.T) {
+	type args struct {
+		file string
+	}
+	tmp, err := ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmp)
+
+	testData := `data`
+
+	tests := []struct {
+		name    string
+		args    args
+		want    *os.File
+		wantErr bool
+	}{
+		{
+			name:    "invalid",
+			args:    args{"//invalid-nofile\\"},
+			wantErr: true,
+		},
+		{
+			name:    "empty",
+			args:    args{""},
+			wantErr: true,
+		},
+		{
+			name: "relative newfile",
+			args: args{"newfile"},
+		},
+		{
+			name: "deep file",
+			args: args{filepath.Join(tmp, "new", "file", "multiple", "sub", "paths")},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Writer(tt.args.file)
+			if err != nil {
+				if (err != nil) != tt.wantErr {
+					t.Errorf("Writer() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				return
+			}
+			defer os.Remove(got.Name())
+			fileInfo, err := os.Stat(got.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !fileInfo.Mode().IsRegular() {
+				t.Fatalf("Writer() error = expected to get a file %s", got.Name())
+			}
+			_, err = got.WriteString(testData)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = got.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if data, err := ioutil.ReadFile(got.Name()); err != nil || string(data) != testData {
+				t.Errorf("Could not write the file, or contents were wrong: expected = %s, got =%s", testData, string(data))
+			}
+		})
+	}
+}
+
+func TestWriterNoPermissionFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skip file permissions")
+	}
+	temp, err := ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(temp)
+	err = os.Chmod(temp, 0555)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Writer(filepath.Join(temp, "path", "to", "somefile"))
+	if err == nil {
+		t.Error("Expected to fail when no permissions, but writer succeeded")
 	}
 }

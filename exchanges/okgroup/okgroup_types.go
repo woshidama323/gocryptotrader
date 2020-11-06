@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/currency"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 )
 
 // Order types
@@ -322,22 +323,23 @@ type GetSpotFilledOrdersInformationRequest struct {
 
 // GetSpotFilledOrdersInformationResponse response data for GetSpotFilledOrdersInformation
 type GetSpotFilledOrdersInformationResponse struct {
-	Price     string    `json:"price"`
+	Price     float64   `json:"price,string"`
 	Side      string    `json:"side"`
-	Size      string    `json:"size"`
+	Size      float64   `json:"size,string"`
 	Timestamp time.Time `json:"timestamp"`
 	TradeID   string    `json:"trade_id"`
 }
 
-// GetSpotMarketDataRequest request data for GetSpotMarketData
-type GetSpotMarketDataRequest struct {
+// GetMarketDataRequest request data for GetMarketData
+type GetMarketDataRequest struct {
+	Asset        asset.Item
 	Start        string `url:"start,omitempty"` // [optional] start time in ISO 8601
 	End          string `url:"end,omitempty"`   // [optional] end time in ISO 8601
-	Granularity  int64  `url:"granularity"`     // The granularity field must be one of the following values: {60, 180, 300, 900, 1800, 3600, 7200, 14400, 43200, 86400, 604800}.
+	Granularity  string `url:"granularity"`     // The granularity field must be one of the following values: {60, 180, 300, 900, 1800, 3600, 7200, 14400, 43200, 86400, 604800}.
 	InstrumentID string `url:"-"`               // [required] trading pairs
 }
 
-// GetSpotMarketDataResponse response data for GetSpotMarketData
+// GetMarketDataResponse response data for GetMarketData
 // Return Parameters
 // time 	string 	Start time
 // open 	string 	Open price
@@ -345,7 +347,7 @@ type GetSpotMarketDataRequest struct {
 // low 	string 	Lowest price
 // close 	string 	Close price
 // volume 	string 	Trading volume
-type GetSpotMarketDataResponse []interface{}
+type GetMarketDataResponse []interface{}
 
 // GetMarginAccountsResponse response data for GetMarginAccounts
 type GetMarginAccountsResponse struct {
@@ -717,7 +719,7 @@ type GetFuturesFilledOrderRequest struct {
 // GetFuturesFilledOrdersResponse response data for GetFuturesFilledOrders
 type GetFuturesFilledOrdersResponse struct {
 	Price     float64   `json:"price,string"`
-	Qty       int64     `json:"qty,string"`
+	Qty       float64   `json:"qty,string"`
 	Side      string    `json:"side"`
 	Timestamp time.Time `json:"timestamp"`
 	TradeID   string    `json:"trade_id"`
@@ -731,7 +733,7 @@ type GetFuturesMarketDateRequest struct {
 	InstrumentID string `url:"-"`                     // [required] trading pairs
 }
 
-// GetFuturesMarketDataResponse contains candle data from a GetSpotMarketDataRequest
+// GetFuturesMarketDataResponse contains candle data from a GetMarketDataRequest
 // Return Parameters
 // time 			string 	Start time
 // open 			string 	Open price
@@ -1315,19 +1317,22 @@ type WebsocketDataResponse struct {
 type WebsocketTickerData struct {
 	Table string `json:"table"`
 	Data  []struct {
-		BaseVolume24h  float64   `json:"base_volume_24h,string"`
-		BestAsk        float64   `json:"best_ask,string"`
-		BestAskSize    float64   `json:"best_ask_size,string"`
-		BestBid        float64   `json:"best_bid,string"`
-		BestBidSize    float64   `json:"best_bid_size,string"`
-		High24h        float64   `json:"high_24h,string"`
-		InstrumentID   string    `json:"instrument_id"`
-		Last           float64   `json:"last,string"`
-		LastQty        float64   `json:"last_qty,string"`
-		Low24h         float64   `json:"low_24h,string"`
-		Open24h        float64   `json:"open_24h,string"`
-		QuoteVolume24h float64   `json:"quote_volume_24h,string"`
-		Timestamp      time.Time `json:"timestamp"`
+		BaseVolume24h     float64   `json:"base_volume_24h,string"`
+		BestAsk           float64   `json:"best_ask,string"`
+		BestAskSize       float64   `json:"best_ask_size,string"`
+		BestBid           float64   `json:"best_bid,string"`
+		BestBidSize       float64   `json:"best_bid_size,string"`
+		High24h           float64   `json:"high_24h,string"`
+		InstrumentID      string    `json:"instrument_id"`
+		Last              float64   `json:"last,string"`
+		LastQty           float64   `json:"last_qty,string"`
+		Low24h            float64   `json:"low_24h,string"`
+		Open24h           float64   `json:"open_24h,string"`
+		QuoteVolume24h    float64   `json:"quote_volume_24h,string"`
+		Timestamp         time.Time `json:"timestamp"`
+		ContractVolume24h float64   `json:"volume_24h,string"`
+		TokenVolume24h    float64   `json:"volume_token_24h,string"`
+		OpenInterest      float64   `json:"open_interest,string"`
 	} `json:"data"`
 }
 
@@ -1341,6 +1346,8 @@ type WebsocketTradeResponse struct {
 		Side         string    `json:"side"`
 		Timestamp    time.Time `json:"timestamp"`
 		TradeID      string    `json:"trade_id"`
+		// Quantity - Futures amount is sent as a separate json field
+		Quantity float64 `json:"qty,string"`
 	} `json:"data"`
 }
 

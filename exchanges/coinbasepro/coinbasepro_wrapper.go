@@ -3,6 +3,8 @@ package coinbasepro
 import (
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,8 +20,9 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/protocol"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/websocket/wshandler"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
 	"github.com/thrasher-corp/gocryptotrader/log"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
@@ -57,19 +60,11 @@ func (c *CoinbasePro) SetDefaults() {
 	c.API.CredentialsValidator.RequiresClientID = true
 	c.API.CredentialsValidator.RequiresBase64DecodeSecret = true
 
-	c.CurrencyPairs = currency.PairsManager{
-		AssetTypes: asset.Items{
-			asset.Spot,
-		},
-		UseGlobalFormat: true,
-		RequestFormat: &currency.PairFormat{
-			Delimiter: "-",
-			Uppercase: true,
-		},
-		ConfigFormat: &currency.PairFormat{
-			Delimiter: "-",
-			Uppercase: true,
-		},
+	requestFmt := &currency.PairFormat{Delimiter: currency.DashDelimiter, Uppercase: true}
+	configFmt := &currency.PairFormat{Delimiter: currency.DashDelimiter, Uppercase: true}
+	err := c.SetGlobalPairsManager(requestFmt, configFmt, asset.Spot)
+	if err != nil {
+		log.Errorln(log.ExchangeSys, err)
 	}
 
 	c.Features = exchange.Features{
@@ -112,9 +107,24 @@ func (c *CoinbasePro) SetDefaults() {
 			},
 			WithdrawPermissions: exchange.AutoWithdrawCryptoWithAPIPermission |
 				exchange.AutoWithdrawFiatWithAPIPermission,
+			Kline: kline.ExchangeCapabilitiesSupported{
+				DateRanges: true,
+				Intervals:  true,
+			},
 		},
 		Enabled: exchange.FeaturesEnabled{
 			AutoPairUpdates: true,
+			Kline: kline.ExchangeCapabilitiesEnabled{
+				Intervals: map[string]bool{
+					kline.OneMin.Word():     true,
+					kline.FiveMin.Word():    true,
+					kline.FifteenMin.Word(): true,
+					kline.OneHour.Word():    true,
+					kline.SixHour.Word():    true,
+					kline.OneDay.Word():     true,
+				},
+				ResultLimit: 300,
+			},
 		},
 	}
 
@@ -125,7 +135,7 @@ func (c *CoinbasePro) SetDefaults() {
 	c.API.Endpoints.URLDefault = coinbaseproAPIURL
 	c.API.Endpoints.URL = c.API.Endpoints.URLDefault
 	c.API.Endpoints.WebsocketURL = coinbaseproWebsocketURL
-	c.Websocket = wshandler.New()
+	c.Websocket = stream.New()
 	c.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	c.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	c.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
@@ -143,41 +153,31 @@ func (c *CoinbasePro) Setup(exch *config.ExchangeConfig) error {
 		return err
 	}
 
-	err = c.Websocket.Setup(
-		&wshandler.WebsocketSetup{
-			Enabled:                          exch.Features.Enabled.Websocket,
-			Verbose:                          exch.Verbose,
-			AuthenticatedWebsocketAPISupport: exch.API.AuthenticatedWebsocketSupport,
-			WebsocketTimeout:                 exch.WebsocketTrafficTimeout,
-			DefaultURL:                       coinbaseproWebsocketURL,
-			ExchangeName:                     exch.Name,
-			RunningURL:                       exch.API.Endpoints.WebsocketURL,
-			Connector:                        c.WsConnect,
-			Subscriber:                       c.Subscribe,
-			UnSubscriber:                     c.Unsubscribe,
-			Features:                         &c.Features.Supports.WebsocketCapabilities,
-		})
+	err = c.Websocket.Setup(&stream.WebsocketSetup{
+		Enabled:                          exch.Features.Enabled.Websocket,
+		Verbose:                          exch.Verbose,
+		AuthenticatedWebsocketAPISupport: exch.API.AuthenticatedWebsocketSupport,
+		WebsocketTimeout:                 exch.WebsocketTrafficTimeout,
+		DefaultURL:                       coinbaseproWebsocketURL,
+		ExchangeName:                     exch.Name,
+		RunningURL:                       exch.API.Endpoints.WebsocketURL,
+		Connector:                        c.WsConnect,
+		Subscriber:                       c.Subscribe,
+		UnSubscriber:                     c.Unsubscribe,
+		GenerateSubscriptions:            c.GenerateDefaultSubscriptions,
+		Features:                         &c.Features.Supports.WebsocketCapabilities,
+		OrderbookBufferLimit:             exch.WebsocketOrderbookBufferLimit,
+		BufferEnabled:                    true,
+		SortBuffer:                       true,
+	})
 	if err != nil {
 		return err
 	}
 
-	c.WebsocketConn = &wshandler.WebsocketConnection{
-		ExchangeName:         c.Name,
-		URL:                  c.Websocket.GetWebsocketURL(),
-		ProxyURL:             c.Websocket.GetProxyAddress(),
-		Verbose:              c.Verbose,
+	return c.Websocket.SetupNewConnection(stream.ConnectionSetup{
 		ResponseCheckTimeout: exch.WebsocketResponseCheckTimeout,
 		ResponseMaxLimit:     exch.WebsocketResponseMaxLimit,
-	}
-
-	c.Websocket.Orderbook.Setup(
-		exch.WebsocketOrderbookBufferLimit,
-		true,
-		true,
-		false,
-		false,
-		exch.Name)
-	return nil
+	})
 }
 
 // Start starts the coinbasepro go routine
@@ -201,21 +201,55 @@ func (c *CoinbasePro) Run() {
 	}
 
 	forceUpdate := false
-	delim := c.GetPairFormat(asset.Spot, false).Delimiter
-	if !common.StringDataContains(c.CurrencyPairs.GetPairs(asset.Spot,
-		true).Strings(), delim) ||
-		!common.StringDataContains(c.CurrencyPairs.GetPairs(asset.Spot,
-			false).Strings(), delim) {
-		enabledPairs := currency.NewPairsFromStrings(
-			[]string{currency.BTC.String() + delim + currency.USD.String()},
-		)
-		log.Warn(log.ExchangeSys,
-			"Enabled pairs for CoinbasePro reset due to config upgrade, please enable the ones you would like to use again")
-		forceUpdate = true
+	format, err := c.GetPairFormat(asset.Spot, false)
+	if err != nil {
+		log.Errorf(log.ExchangeSys,
+			"%s failed to update currencies. Err: %s\n",
+			c.Name,
+			err)
+		return
+	}
+	enabled, err := c.CurrencyPairs.GetPairs(asset.Spot, true)
+	if err != nil {
+		log.Errorf(log.ExchangeSys,
+			"%s failed to update currencies. Err: %s\n",
+			c.Name,
+			err)
+		return
+	}
 
-		err := c.UpdatePairs(enabledPairs, asset.Spot, true, true)
+	avail, err := c.CurrencyPairs.GetPairs(asset.Spot, false)
+	if err != nil {
+		log.Errorf(log.ExchangeSys,
+			"%s failed to update currencies. Err: %s\n",
+			c.Name,
+			err)
+		return
+	}
+
+	if !common.StringDataContains(enabled.Strings(), format.Delimiter) ||
+		!common.StringDataContains(avail.Strings(), format.Delimiter) {
+		var p currency.Pairs
+		p, err = currency.NewPairsFromStrings([]string{currency.BTC.String() +
+			format.Delimiter +
+			currency.USD.String()})
 		if err != nil {
-			log.Errorf(log.ExchangeSys, "%s failed to update currencies. Err: %s\n", c.Name, err)
+			log.Errorf(log.ExchangeSys,
+				"%s failed to update currencies. Err: %s\n",
+				c.Name,
+				err)
+		} else {
+			log.Warn(log.ExchangeSys,
+				"Enabled pairs for CoinbasePro reset due to config upgrade, please enable the ones you would like to use again")
+			forceUpdate = true
+
+			err = c.UpdatePairs(p, asset.Spot, true, true)
+			if err != nil {
+				log.Errorf(log.ExchangeSys,
+					"%s failed to update currencies. Err: %s\n",
+					c.Name,
+					err)
+			}
 		}
 	}
 
@@ -223,7 +257,7 @@ func (c *CoinbasePro) Run() {
 		return
 	}
 
-	err := c.UpdateTradablePairs(forceUpdate)
+	err = c.UpdateTradablePairs(forceUpdate)
 	if err != nil {
 		log.Errorf(log.ExchangeSys, "%s failed to update tradable pairs. Err: %s", c.Name, err)
 	}
@@ -236,10 +270,15 @@ func (c *CoinbasePro) FetchTradablePairs(asset asset.Item) ([]string, error) {
 		return nil, err
 	}
 
+	format, err := c.GetPairFormat(asset, false)
+	if err != nil {
+		return nil, err
+	}
+
 	var products []string
 	for x := range pairs {
 		products = append(products, pairs[x].BaseCurrency+
-			c.GetPairFormat(asset, false).Delimiter+
+			format.Delimiter+
 			pairs[x].QuoteCurrency)
 	}
 
@@ -254,7 +293,12 @@ func (c *CoinbasePro) UpdateTradablePairs(forceUpdate bool) error {
 		return err
 	}
 
-	return c.UpdatePairs(currency.NewPairsFromStrings(pairs), asset.Spot, false, forceUpdate)
+	p, err := currency.NewPairsFromStrings(pairs)
+	if err != nil {
+		return err
+	}
+
+	return c.UpdatePairs(p, asset.Spot, false, forceUpdate)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies for the
@@ -301,28 +345,34 @@ func (c *CoinbasePro) FetchAccountInfo() (account.Holdings, error) {
 
 // UpdateTicker updates and returns the ticker for a currency pair
 func (c *CoinbasePro) UpdateTicker(p currency.Pair, assetType asset.Item) (*ticker.Price, error) {
-	tick, err := c.GetTicker(c.FormatExchangeCurrency(p, assetType).String())
+	fpair, err := c.FormatExchangeCurrency(p, assetType)
 	if err != nil {
 		return nil, err
 	}
-	stats, err := c.GetStats(c.FormatExchangeCurrency(p, assetType).String())
+
+	tick, err := c.GetTicker(fpair.String())
+	if err != nil {
+		return nil, err
+	}
+	stats, err := c.GetStats(fpair.String())
 	if err != nil {
 		return nil, err
 	}
 
 	tickerPrice := &ticker.Price{
-		Last:        tick.Size,
-		High:        stats.High,
-		Low:         stats.Low,
-		Bid:         tick.Bid,
-		Ask:         tick.Ask,
-		Volume:      tick.Volume,
-		Open:        stats.Open,
-		Pair:        p,
-		LastUpdated: tick.Time,
-	}
+		Last:         stats.Last,
+		High:         stats.High,
+		Low:          stats.Low,
+		Bid:          tick.Bid,
+		Ask:          tick.Ask,
+		Volume:       tick.Volume,
+		Open:         stats.Open,
+		Pair:         p,
+		LastUpdated:  tick.Time,
+		ExchangeName: c.Name,
+		AssetType:    assetType}
 
-	err = ticker.ProcessTicker(c.Name, tickerPrice, assetType)
+	err = ticker.ProcessTicker(tickerPrice)
 	if err != nil {
 		return tickerPrice, err
 	}
@@ -350,15 +400,18 @@ func (c *CoinbasePro) FetchOrderbook(p currency.Pair, assetType asset.Item) (*or
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (c *CoinbasePro) UpdateOrderbook(p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
-	orderBook := new(orderbook.Base)
-	orderbookNew, err := c.GetOrderbook(c.FormatExchangeCurrency(p,
-		assetType).String(), 2)
+	fpair, err := c.FormatExchangeCurrency(p, assetType)
 	if err != nil {
-		return orderBook, err
+		return nil, err
+	}
+
+	orderbookNew, err := c.GetOrderbook(fpair.String(), 2)
+	if err != nil {
+		return nil, err
 	}
 
 	obNew := orderbookNew.(OrderbookL1L2)
-
+	orderBook := new(orderbook.Base)
 	for x := range obNew.Bids {
 		orderBook.Bids = append(orderBook.Bids, orderbook.Item{Amount: obNew.Bids[x].Amount, Price: obNew.Bids[x].Price})
 	}
@@ -385,9 +438,49 @@ func (c *CoinbasePro) GetFundingHistory() ([]exchange.FundHistory, error) {
 	return nil, common.ErrFunctionNotSupported
 }
 
-// GetExchangeHistory returns historic trade data since exchange opening.
-func (c *CoinbasePro) GetExchangeHistory(p currency.Pair, assetType asset.Item) ([]exchange.TradeHistory, error) {
-	return nil, common.ErrNotYetImplemented
+// GetRecentTrades returns the most recent trades for a currency and asset
+func (c *CoinbasePro) GetRecentTrades(p currency.Pair, assetType asset.Item) ([]trade.Data, error) {
+	var err error
+	p, err = c.FormatExchangeCurrency(p, assetType)
+	if err != nil {
+		return nil, err
+	}
+	var tradeData []Trade
+	tradeData, err = c.GetTrades(p.String())
+	if err != nil {
+		return nil, err
+	}
+	var resp []trade.Data
+	for i := range tradeData {
+		var side order.Side
+		side, err = order.StringToOrderSide(tradeData[i].Side)
+		if err != nil {
+			return nil, err
+		}
+		resp = append(resp, trade.Data{
+			Exchange:     c.Name,
+			TID:          strconv.FormatInt(tradeData[i].TradeID, 10),
+			CurrencyPair: p,
+			AssetType:    assetType,
+			Side:         side,
+			Price:        tradeData[i].Price,
+			Amount:       tradeData[i].Size,
+			Timestamp:    tradeData[i].Time,
+		})
+	}
+
+	err = c.AddTradesToBuffer(resp...)
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Sort(trade.ByDate(resp))
+	return resp, nil
+}
+
+// GetHistoricTrades returns historic trade data within the timeframe provided
+func (c *CoinbasePro) GetHistoricTrades(_ currency.Pair, _ asset.Item, _, _ time.Time) ([]trade.Data, error) {
+	return nil, common.ErrFunctionNotSupported
 }
 
 // SubmitOrder submits a new order
@@ -397,15 +490,19 @@ func (c *CoinbasePro) SubmitOrder(s *order.Submit) (order.SubmitResponse, error)
 		return submitOrderResponse, err
 	}
 
+	fpair, err := c.FormatExchangeCurrency(s.Pair, asset.Spot)
+	if err != nil {
+		return submitOrderResponse, err
+	}
+
 	var response string
-	var err error
 	switch s.Type {
 	case order.Market:
 		response, err = c.PlaceMarketOrder("",
 			s.Amount,
 			s.Amount,
 			s.Side.Lower(),
-			c.FormatExchangeCurrency(s.Pair, asset.Spot).String(),
+			fpair.String(),
 			"")
 	case order.Limit:
 		response, err = c.PlaceLimitOrder("",
@@ -414,7 +511,7 @@ func (c *CoinbasePro) SubmitOrder(s *order.Submit) (order.SubmitResponse, error)
 			s.Side.Lower(),
 			"",
 			"",
-			c.FormatExchangeCurrency(s.Pair, asset.Spot).String(),
+			fpair.String(),
 			"",
 			false)
 	default:
@@ -442,8 +539,11 @@ func (c *CoinbasePro) ModifyOrder(action *order.Modify) (string, error) {
 }
 
 // CancelOrder cancels an order by its corresponding ID number
-func (c *CoinbasePro) CancelOrder(order *order.Cancel) error {
-	return c.CancelExistingOrder(order.ID)
+func (c *CoinbasePro) CancelOrder(o *order.Cancel) error {
+	if err := o.Validate(o.StandardCancel()); err != nil {
+		return err
+	}
+	return c.CancelExistingOrder(o.ID)
 }
 
 // CancelAllOrders cancels all orders associated with a currency pair
@@ -453,8 +553,8 @@ func (c *CoinbasePro) CancelAllOrders(_ *order.Cancel) (order.CancelAllResponse,
 	return order.CancelAllResponse{}, err
 }
 
-// GetOrderInfo returns information on a current open order
-func (c *CoinbasePro) GetOrderInfo(orderID string) (order.Detail, error) {
+// GetOrderInfo returns order information based on order ID
+func (c *CoinbasePro) GetOrderInfo(orderID string, pair currency.Pair, assetType asset.Item) (order.Detail, error) {
 	genOrderDetail, errGo := c.GetOrder(orderID)
 	if errGo != nil {
 		return order.Detail{}, fmt.Errorf("error retrieving order %s : %s", orderID, errGo)
@@ -475,10 +575,15 @@ func (c *CoinbasePro) GetOrderInfo(orderID string) (order.Detail, error) {
 	if errOss != nil {
 		return order.Detail{}, fmt.Errorf("error parsing order side: %s", errOss)
 	}
+	p, errP := currency.NewPairDelimiter(genOrderDetail.ProductID, "-")
+	if errP != nil {
+		return order.Detail{}, fmt.Errorf("error parsing order side: %s", errP)
+	}
+
 	response := order.Detail{
 		Exchange:        c.GetName(),
 		ID:              genOrderDetail.ID,
-		Pair:            currency.NewPairDelimiter(genOrderDetail.ProductID, "-"),
+		Pair:            p,
 		Side:            ss,
 		Type:            tt,
 		Date:            od,
@@ -498,13 +603,9 @@ func (c *CoinbasePro) GetOrderInfo(orderID string) (order.Detail, error) {
 		if errTSi != nil {
 			return response, fmt.Errorf("error parsing order Side: %s", errTSi)
 		}
-		td, errTd := time.Parse(time.RFC3339, fillResponse[i].CreatedAt)
-		if errTd != nil {
-			return response, fmt.Errorf("error parsing trade created time: %s", errTd)
-		}
 		response.Trades = append(response.Trades, order.TradeHistory{
-			Timestamp: td,
-			TID:       string(fillResponse[i].TradeID),
+			Timestamp: fillResponse[i].CreatedAt,
+			TID:       strconv.FormatInt(fillResponse[i].TradeID, 10),
 			Price:     fillResponse[i].Price,
 			Amount:    fillResponse[i].Size,
 			Exchange:  c.GetName(),
@@ -524,6 +625,9 @@ func (c *CoinbasePro) GetDepositAddress(cryptocurrency currency.Code, accountID 
 // WithdrawCryptocurrencyFunds returns a withdrawal ID when a withdrawal is
 // submitted
 func (c *CoinbasePro) WithdrawCryptocurrencyFunds(withdrawRequest *withdraw.Request) (*withdraw.ExchangeResponse, error) {
+	if err := withdrawRequest.Validate(); err != nil {
+		return nil, err
+	}
 	resp, err := c.WithdrawCrypto(withdrawRequest.Amount, withdrawRequest.Currency.String(), withdrawRequest.Crypto.Address)
 	if err != nil {
 		return nil, err
@@ -536,6 +640,9 @@ func (c *CoinbasePro) WithdrawCryptocurrencyFunds(withdrawRequest *withdraw.Requ
 // WithdrawFiatFunds returns a withdrawal ID when a withdrawal is
 // submitted
 func (c *CoinbasePro) WithdrawFiatFunds(withdrawRequest *withdraw.Request) (*withdraw.ExchangeResponse, error) {
+	if err := withdrawRequest.Validate(); err != nil {
+		return nil, err
+	}
 	paymentMethods, err := c.GetPayMethods()
 	if err != nil {
 		return nil, err
@@ -565,6 +672,9 @@ func (c *CoinbasePro) WithdrawFiatFunds(withdrawRequest *withdraw.Request) (*wit
 // WithdrawFiatFundsToInternationalBank returns a withdrawal ID when a
 // withdrawal is submitted
 func (c *CoinbasePro) WithdrawFiatFundsToInternationalBank(withdrawRequest *withdraw.Request) (*withdraw.ExchangeResponse, error) {
+	if err := withdrawRequest.Validate(); err != nil {
+		return nil, err
+	}
 	v, err := c.WithdrawFiatFunds(withdrawRequest)
 	if err != nil {
 		return nil, err
@@ -573,11 +683,6 @@ func (c *CoinbasePro) WithdrawFiatFundsToInternationalBank(withdrawRequest *with
 		ID:     v.ID,
 		Status: v.Status,
 	}, nil
-}
-
-// GetWebsocket returns a pointer to the exchange websocket
-func (c *CoinbasePro) GetWebsocket() (*wshandler.Websocket, error) {
-	return c.Websocket, nil
 }
 
 // GetFeeByType returns an estimate of fee based on type of transaction
@@ -591,38 +696,45 @@ func (c *CoinbasePro) GetFeeByType(feeBuilder *exchange.FeeBuilder) (float64, er
 
 // GetActiveOrders retrieves any orders that are active/open
 func (c *CoinbasePro) GetActiveOrders(req *order.GetOrdersRequest) ([]order.Detail, error) {
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
 	var respOrders []GeneralizedOrderResponse
 	for i := range req.Pairs {
+		fpair, err := c.FormatExchangeCurrency(req.Pairs[i], asset.Spot)
+		if err != nil {
+			return nil, err
+		}
+
 		resp, err := c.GetOrders([]string{"open", "pending", "active"},
-			c.FormatExchangeCurrency(req.Pairs[i], asset.Spot).String())
+			fpair.String())
 		if err != nil {
 			return nil, err
 		}
 		respOrders = append(respOrders, resp...)
 	}
 
+	format, err := c.GetPairFormat(asset.Spot, false)
+	if err != nil {
+		return nil, err
+	}
+
 	var orders []order.Detail
 	for i := range respOrders {
-		curr := currency.NewPairDelimiter(respOrders[i].ProductID,
-			c.GetPairFormat(asset.Spot, false).Delimiter)
+		var curr currency.Pair
+		curr, err = currency.NewPairDelimiter(respOrders[i].ProductID,
+			format.Delimiter)
+		if err != nil {
+			return nil, err
+		}
 		orderSide := order.Side(strings.ToUpper(respOrders[i].Side))
 		orderType := order.Type(strings.ToUpper(respOrders[i].Type))
-		orderDate, err := time.Parse(time.RFC3339, respOrders[i].CreatedAt)
-		if err != nil {
-			log.Errorf(log.ExchangeSys,
-				"Exchange %v Func %v Order %v Could not parse date to unix with value of %v",
-				c.Name,
-				"GetActiveOrders",
-				respOrders[i].ID,
-				respOrders[i].CreatedAt)
-		}
-
 		orders = append(orders, order.Detail{
 			ID:             respOrders[i].ID,
 			Amount:         respOrders[i].Size,
 			ExecutedAmount: respOrders[i].FilledSize,
 			Type:           orderType,
-			Date:           orderDate,
+			Date:           respOrders[i].CreatedAt,
 			Side:           orderSide,
 			Pair:           curr,
 			Exchange:       c.Name,
@@ -638,38 +750,44 @@ func (c *CoinbasePro) GetActiveOrders(req *order.GetOrdersRequest) ([]order.Deta
 // GetOrderHistory retrieves account order information
 // Can Limit response to specific order status
 func (c *CoinbasePro) GetOrderHistory(req *order.GetOrdersRequest) ([]order.Detail, error) {
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
 	var respOrders []GeneralizedOrderResponse
 	for i := range req.Pairs {
+		fpair, err := c.FormatExchangeCurrency(req.Pairs[i], asset.Spot)
+		if err != nil {
+			return nil, err
+		}
 		resp, err := c.GetOrders([]string{"done", "settled"},
-			c.FormatExchangeCurrency(req.Pairs[i], asset.Spot).String())
+			fpair.String())
 		if err != nil {
 			return nil, err
 		}
 		respOrders = append(respOrders, resp...)
 	}
 
+	format, err := c.GetPairFormat(asset.Spot, false)
+	if err != nil {
+		return nil, err
+	}
+
 	var orders []order.Detail
 	for i := range respOrders {
-		curr := currency.NewPairDelimiter(respOrders[i].ProductID,
-			c.GetPairFormat(asset.Spot, false).Delimiter)
+		var curr currency.Pair
+		curr, err = currency.NewPairDelimiter(respOrders[i].ProductID,
+			format.Delimiter)
+		if err != nil {
+			return nil, err
+		}
 		orderSide := order.Side(strings.ToUpper(respOrders[i].Side))
 		orderType := order.Type(strings.ToUpper(respOrders[i].Type))
-		orderDate, err := time.Parse(time.RFC3339, respOrders[i].CreatedAt)
-		if err != nil {
-			log.Errorf(log.ExchangeSys,
-				"Exchange %v Func %v Order %v Could not parse date to unix with value of %v",
-				c.Name,
-				"GetActiveOrders",
-				respOrders[i].ID,
-				respOrders[i].CreatedAt)
-		}
-
 		orders = append(orders, order.Detail{
 			ID:             respOrders[i].ID,
 			Amount:         respOrders[i].Size,
 			ExecutedAmount: respOrders[i].FilledSize,
 			Type:           orderType,
-			Date:           orderDate,
+			Date:           respOrders[i].CreatedAt,
 			Side:           orderSide,
 			Pair:           curr,
 			Exchange:       c.Name,
@@ -680,30 +798,6 @@ func (c *CoinbasePro) GetOrderHistory(req *order.GetOrdersRequest) ([]order.Deta
 	order.FilterOrdersByTickRange(&orders, req.StartTicks, req.EndTicks)
 	order.FilterOrdersBySide(&orders, req.Side)
 	return orders, nil
-}
-
-// SubscribeToWebsocketChannels appends to ChannelsToSubscribe
-// which lets websocket.manageSubscriptions handle subscribing
-func (c *CoinbasePro) SubscribeToWebsocketChannels(channels []wshandler.WebsocketChannelSubscription) error {
-	c.Websocket.SubscribeToChannels(channels)
-	return nil
-}
-
-// UnsubscribeToWebsocketChannels removes from ChannelsToSubscribe
-// which lets websocket.manageSubscriptions handle unsubscribing
-func (c *CoinbasePro) UnsubscribeToWebsocketChannels(channels []wshandler.WebsocketChannelSubscription) error {
-	c.Websocket.RemoveSubscribedChannels(channels)
-	return nil
-}
-
-// GetSubscriptions returns a copied list of subscriptions
-func (c *CoinbasePro) GetSubscriptions() ([]wshandler.WebsocketChannelSubscription, error) {
-	return c.Websocket.GetSubscriptions(), nil
-}
-
-// AuthenticateWebsocket sends an authentication message to the websocket
-func (c *CoinbasePro) AuthenticateWebsocket() error {
-	return common.ErrFunctionNotSupported
 }
 
 // checkInterval checks allowable interval
@@ -727,25 +821,39 @@ func checkInterval(i time.Duration) (int64, error) {
 
 // GetHistoricCandles returns a set of candle between two time periods for a
 // designated time period
-func (c *CoinbasePro) GetHistoricCandles(p currency.Pair, a asset.Item, start, end time.Time, interval time.Duration) (kline.Item, error) {
-	i, err := checkInterval(interval)
+func (c *CoinbasePro) GetHistoricCandles(p currency.Pair, a asset.Item, start, end time.Time, interval kline.Interval) (kline.Item, error) {
+	if err := c.ValidateKline(p, a, interval); err != nil {
+		return kline.Item{}, err
+	}
+
+	if kline.TotalCandlesPerInterval(start, end, interval) > c.Features.Enabled.Kline.ResultLimit {
+		return kline.Item{}, errors.New(kline.ErrRequestExceedsExchangeLimits)
+	}
+
+	candles := kline.Item{
+		Exchange: c.Name,
+		Pair:     p,
+		Asset:    a,
+		Interval: interval,
+	}
+
+	gran, err := strconv.ParseInt(c.FormatExchangeKlineInterval(interval), 10, 64)
 	if err != nil {
 		return kline.Item{}, err
 	}
 
-	history, err := c.GetHistoricRates(c.FormatExchangeCurrency(p, a).String(),
+	formatP, err := c.FormatExchangeCurrency(p, a)
+	if err != nil {
+		return kline.Item{}, err
+	}
+
+	history, err := c.GetHistoricRates(formatP.String(),
 		start.Format(time.RFC3339),
 		end.Format(time.RFC3339),
-		i)
+		gran)
 	if err != nil {
 		return kline.Item{}, err
 	}
-
-	var candles kline.Item
-	candles.Asset = a
-	candles.Exchange = c.Name
-	candles.Interval = interval
-	candles.Pair = p
 
 	for x := range history {
 		candles.Candles = append(candles.Candles, kline.Candle{
@@ -757,7 +865,58 @@ func (c *CoinbasePro) GetHistoricCandles(p currency.Pair, a asset.Item, start, e
 			Volume: history[x].Volume,
 		})
 	}
+
+	candles.SortCandlesByTimestamp(false)
 	return candles, nil
+}
+
+// GetHistoricCandlesExtended returns candles between a time period for a set time interval
+func (c *CoinbasePro) GetHistoricCandlesExtended(p currency.Pair, a asset.Item, start, end time.Time, interval kline.Interval) (kline.Item, error) {
+	if err := c.ValidateKline(p, a, interval); err != nil {
+		return kline.Item{}, err
+	}
+
+	ret := kline.Item{
+		Exchange: c.Name,
+		Pair:     p,
+		Asset:    a,
+		Interval: interval,
+	}
+
+	gran, err := strconv.ParseInt(c.FormatExchangeKlineInterval(interval), 10, 64)
+	if err != nil {
+		return kline.Item{}, err
+	}
+	dates := kline.CalcDateRanges(start, end, interval, c.Features.Enabled.Kline.ResultLimit)
+
+	formattedPair, err := c.FormatExchangeCurrency(p, a)
+	if err != nil {
+		return kline.Item{}, err
+	}
+
+	for x := range dates {
+		history, err := c.GetHistoricRates(formattedPair.String(),
+			dates[x].Start.Format(time.RFC3339),
+			dates[x].End.Format(time.RFC3339),
+			gran)
+		if err != nil {
+			return kline.Item{}, err
+		}
+
+		for i := range history {
+			ret.Candles = append(ret.Candles, kline.Candle{
+				Time:   time.Unix(history[i].Time, 0),
+				Low:    history[i].Low,
+				High:   history[i].High,
+				Open:   history[i].Open,
+				Close:  history[i].Close,
+				Volume: history[i].Volume,
+			})
+		}
+	}
+
+	ret.SortCandlesByTimestamp(false)
+	return ret, nil
 }
 
 // ValidateCredentials validates current credentials used for wrapper

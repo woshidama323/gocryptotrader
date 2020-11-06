@@ -93,7 +93,7 @@ type Orderbook struct {
 
 // Trade stores the trade data
 type Trade struct {
-	ID        float64 `json:"id"`
+	TradeID   float64 `json:"trade-id"`
 	Price     float64 `json:"price"`
 	Amount    float64 `json:"amount"`
 	Direction string  `json:"direction"`
@@ -299,26 +299,10 @@ var (
 
 // KlinesRequestParams represents Klines request data.
 type KlinesRequestParams struct {
-	Symbol string       // Symbol to be used; example btcusdt, bccbtc......
-	Period TimeInterval // Kline time interval; 1min, 5min, 15min......
-	Size   int          // Size; [1-2000]
+	Symbol string // Symbol to be used; example btcusdt, bccbtc......
+	Period string // Kline time interval; 1min, 5min, 15min......
+	Size   int    // Size; [1-2000]
 }
-
-// TimeInterval base type
-type TimeInterval string
-
-// TimeInterval vars
-var (
-	TimeIntervalMinute         = TimeInterval("1min")
-	TimeIntervalFiveMinutes    = TimeInterval("5min")
-	TimeIntervalFifteenMinutes = TimeInterval("15min")
-	TimeIntervalThirtyMinutes  = TimeInterval("30min")
-	TimeIntervalHour           = TimeInterval("60min")
-	TimeIntervalDay            = TimeInterval("1day")
-	TimeIntervalWeek           = TimeInterval("1week")
-	TimeIntervalMohth          = TimeInterval("1mon")
-	TimeIntervalYear           = TimeInterval("1year")
-)
 
 // WsRequest defines a request data structure
 type WsRequest struct {
@@ -331,18 +315,19 @@ type WsRequest struct {
 // WsResponse defines a response from the websocket connection when there
 // is an error
 type WsResponse struct {
-	Op           string `json:"op"`
-	TS           int64  `json:"ts"`
-	Status       string `json:"status"`
-	ErrorCode    int64  `json:"err-code"`
-	ErrorMessage string `json:"err-msg"`
-	Ping         int64  `json:"ping"`
-	Channel      string `json:"ch"`
-	Rep          string `json:"rep"`
-	Topic        string `json:"topic"`
-	Subscribed   string `json:"subbed"`
-	UnSubscribed string `json:"unsubbed"`
-	ClientID     int64  `json:"cid,string"`
+	Op     string `json:"op"`
+	TS     int64  `json:"ts"`
+	Status string `json:"status"`
+	// ErrorCode returns either an integer or a string
+	ErrorCode    interface{} `json:"err-code"`
+	ErrorMessage string      `json:"err-msg"`
+	Ping         int64       `json:"ping"`
+	Channel      string      `json:"ch"`
+	Rep          string      `json:"rep"`
+	Topic        string      `json:"topic"`
+	Subscribed   string      `json:"subbed"`
+	UnSubscribed string      `json:"unsubbed"`
+	ClientID     int64       `json:"cid,string"`
 }
 
 // WsHeartBeat defines a heartbeat request
@@ -375,7 +360,7 @@ type WsKline struct {
 		Amount float64 `json:"amount"`
 		Volume float64 `json:"vol"`
 		Count  int64   `json:"count"`
-	}
+	} `json:"tick"`
 }
 
 // WsTick stores websocket ticker data
@@ -406,7 +391,7 @@ type WsTrade struct {
 		Data      []struct {
 			Amount    float64 `json:"amount"`
 			Timestamp int64   `json:"ts"`
-			ID        float64 `json:"id"`
+			TradeID   float64 `json:"tradeId"`
 			Price     float64 `json:"price"`
 			Direction string  `json:"direction"`
 		} `json:"data"`
@@ -593,7 +578,7 @@ type WsPong struct {
 	Pong int64 `json:"pong"`
 }
 
-type wsKLineResponseThing struct {
+type wsKlineResponse struct {
 	Data []struct {
 		Amount float64 `json:"amount"`
 		Close  float64 `json:"close"`
@@ -606,4 +591,9 @@ type wsKLineResponseThing struct {
 	} `json:"data"`
 	Rep    string `json:"rep"`
 	Status string `json:"status"`
+}
+
+type authenticationPing struct {
+	OP string `json:"op"`
+	TS int64  `json:"ts"`
 }

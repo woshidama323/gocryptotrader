@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/thrasher-corp/gocryptotrader/common"
@@ -12,9 +13,11 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/core"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/websocket/wshandler"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
 
@@ -44,13 +47,11 @@ func TestMain(m *testing.M) {
 	hConfig.API.AuthenticatedWebsocketSupport = true
 	hConfig.API.Credentials.Key = apiKey
 	hConfig.API.Credentials.Secret = apiSecret
-
+	h.Websocket = sharedtestvalues.NewTestWebsocket()
 	err = h.Setup(hConfig)
 	if err != nil {
 		log.Fatal("Huobi setup error", err)
 	}
-	h.Websocket.DataHandler = sharedtestvalues.GetWebsocketInterfaceChannelOverride()
-	h.Websocket.TrafficAlert = sharedtestvalues.GetWebsocketStructChannelOverride()
 	os.Exit(m.Run())
 }
 
@@ -59,26 +60,10 @@ func setupWsTests(t *testing.T) {
 		return
 	}
 	if !h.Websocket.IsEnabled() && !h.API.AuthenticatedWebsocketSupport || !areTestAPIKeysSet() {
-		t.Skip(wshandler.WebsocketNotEnabled)
+		t.Skip(stream.WebsocketNotEnabled)
 	}
 	comms = make(chan WsMessage, sharedtestvalues.WebsocketChannelOverrideCapacity)
-	h.Websocket.DataHandler = sharedtestvalues.GetWebsocketInterfaceChannelOverride()
-	h.Websocket.TrafficAlert = sharedtestvalues.GetWebsocketStructChannelOverride()
 	go h.wsReadData()
-	h.AuthenticatedWebsocketConn = &wshandler.WebsocketConnection{
-		ExchangeName:         h.Name,
-		URL:                  wsAccountsOrdersURL,
-		Verbose:              h.Verbose,
-		ResponseMaxLimit:     exchange.DefaultWebsocketResponseMaxLimit,
-		ResponseCheckTimeout: exchange.DefaultWebsocketResponseCheckTimeout,
-	}
-	h.WebsocketConn = &wshandler.WebsocketConnection{
-		ExchangeName:         h.Name,
-		URL:                  wsMarketURL,
-		Verbose:              h.Verbose,
-		ResponseMaxLimit:     exchange.DefaultWebsocketResponseMaxLimit,
-		ResponseCheckTimeout: exchange.DefaultWebsocketResponseCheckTimeout,
-	}
 	var dialer websocket.Dialer
 	err := h.wsAuthenticatedDial(&dialer)
 	if err != nil {
@@ -96,11 +81,50 @@ func TestGetSpotKline(t *testing.T) {
 	t.Parallel()
 	_, err := h.GetSpotKline(KlinesRequestParams{
 		Symbol: testSymbol,
-		Period: TimeIntervalHour,
+		Period: "1min",
 		Size:   0,
 	})
 	if err != nil {
 		t.Errorf("Huobi TestGetSpotKline: %s", err)
+	}
+}
+
+func TestGetHistoricCandles(t *testing.T) {
+	currencyPair, err := currency.NewPairFromString("BTC-USDT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	startTime := time.Now().Add(-time.Hour * 1)
+	_, err = h.GetHistoricCandles(currencyPair, asset.Spot, startTime, time.Now(), kline.OneMin)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = h.GetHistoricCandles(currencyPair, asset.Spot, startTime.AddDate(0, 0, -7), time.Now(), kline.OneDay)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = h.GetHistoricCandles(currencyPair, asset.Spot, startTime, time.Now(), kline.Interval(time.Hour*7))
+	if err == nil {
+		t.Fatal("unexpected result")
+	}
+}
+
+func TestGetHistoricCandlesExtended(t *testing.T) {
+	currencyPair, err := currency.NewPairFromString("BTC-USDT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	startTime := time.Now().Add(-time.Hour * 1)
+	_, err = h.GetHistoricCandlesExtended(currencyPair, asset.Spot, startTime, time.Now(), kline.OneMin)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = h.GetHistoricCandlesExtended(currencyPair, asset.Spot, startTime, time.Now(), kline.Interval(time.Hour*7))
+	if err == nil {
+		t.Fatal("unexpected result")
 	}
 }
 
@@ -142,7 +166,7 @@ func TestGetLatestSpotPrice(t *testing.T) {
 
 func TestGetTradeHistory(t *testing.T) {
 	t.Parallel()
-	_, err := h.GetTradeHistory(testSymbol, "50")
+	_, err := h.GetTradeHistory(testSymbol, 50)
 	if err != nil {
 		t.Errorf("Huobi TestGetTradeHistory: %s", err)
 	}
@@ -471,11 +495,12 @@ func TestSubmitOrder(t *testing.T) {
 			Base:  currency.BTC,
 			Quote: currency.USDT,
 		},
-		Side:     order.Buy,
-		Type:     order.Limit,
-		Price:    1,
-		Amount:   1,
-		ClientID: strconv.FormatInt(accounts[0].ID, 10),
+		Side:      order.Buy,
+		Type:      order.Limit,
+		Price:     1,
+		Amount:    1,
+		ClientID:  strconv.FormatInt(accounts[0].ID, 10),
+		AssetType: asset.Spot,
 	}
 	response, err := h.SubmitOrder(orderSubmission)
 	if areTestAPIKeysSet() && (err != nil || !response.IsOrderPlaced) {
@@ -494,6 +519,7 @@ func TestCancelExchangeOrder(t *testing.T) {
 		WalletAddress: core.BitcoinDonationAddress,
 		AccountID:     "1",
 		Pair:          currencyPair,
+		AssetType:     asset.Spot,
 	}
 
 	err := h.CancelOrder(orderCancellation)
@@ -551,7 +577,7 @@ func TestModifyOrder(t *testing.T) {
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
-	_, err := h.ModifyOrder(&order.Modify{})
+	_, err := h.ModifyOrder(&order.Modify{AssetType: asset.Spot})
 	if err == nil {
 		t.Error("ModifyOrder() Expected error")
 	}
@@ -562,7 +588,7 @@ func TestWithdraw(t *testing.T) {
 		Amount:      -1,
 		Currency:    currency.BTC,
 		Description: "WITHDRAW IT ALL",
-		Crypto: &withdraw.CryptoRequest{
+		Crypto: withdraw.CryptoRequest{
 			Address: core.BitcoinDonationAddress,
 		},
 	}
@@ -627,24 +653,22 @@ func TestQueryWithdrawQuota(t *testing.T) {
 // TestWsGetAccountsList connects to WS, logs in, gets account list
 func TestWsGetAccountsList(t *testing.T) {
 	setupWsTests(t)
-	resp, err := h.wsGetAccountsList()
+	_, err := h.wsGetAccountsList()
 	if err != nil {
 		t.Fatal(err)
-	}
-	if resp.ErrorCode > 0 {
-		t.Error(resp.ErrorMessage)
 	}
 }
 
 // TestWsGetOrderList connects to WS, logs in, gets order list
 func TestWsGetOrderList(t *testing.T) {
 	setupWsTests(t)
-	resp, err := h.wsGetOrdersList(1, currency.NewPairFromString("ethbtc"))
+	p, err := currency.NewPairFromString("ethbtc")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.ErrorCode > 0 {
-		t.Error(resp.ErrorMessage)
+	_, err = h.wsGetOrdersList(1, p)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -652,12 +676,9 @@ func TestWsGetOrderList(t *testing.T) {
 func TestWsGetOrderDetails(t *testing.T) {
 	setupWsTests(t)
 	orderID := "123"
-	resp, err := h.wsGetOrderDetails(orderID)
+	_, err := h.wsGetOrderDetails(orderID)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if resp.ErrorCode > 0 && resp.ErrorCode != 10022 {
-		t.Error(resp.ErrorMessage)
 	}
 }
 
@@ -1030,5 +1051,85 @@ func TestStringToOrderType(t *testing.T) {
 		if result != testCases[i].Result {
 			t.Errorf("Exepcted: %v, received: %v", testCases[i].Result, result)
 		}
+	}
+}
+
+func Test_FormatExchangeKlineInterval(t *testing.T) {
+	testCases := []struct {
+		name     string
+		interval kline.Interval
+		output   string
+	}{
+		{
+			"OneMin",
+			kline.OneMin,
+			"1min",
+		},
+		{
+			"FourHour",
+			kline.FourHour,
+			"4hour",
+		},
+		{
+			"OneDay",
+			kline.OneDay,
+			"1day",
+		},
+		{
+			"OneWeek",
+			kline.OneWeek,
+			"1week",
+		},
+		{
+			"OneMonth",
+			kline.OneMonth,
+			"1mon",
+		},
+		{
+			"OneYear",
+			kline.OneYear,
+			"1year",
+		},
+		{
+			"AllOthers",
+			kline.TwoWeek,
+			"",
+		},
+	}
+
+	for x := range testCases {
+		test := testCases[x]
+
+		t.Run(test.name, func(t *testing.T) {
+			ret := h.FormatExchangeKlineInterval(test.interval)
+
+			if ret != test.output {
+				t.Fatalf("unexpected result return expected: %v received: %v", test.output, ret)
+			}
+		})
+	}
+}
+
+func TestGetRecentTrades(t *testing.T) {
+	t.Parallel()
+	currencyPair, err := currency.NewPairFromString("BTC-USDT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = h.GetRecentTrades(currencyPair, asset.Spot)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestGetHistoricTrades(t *testing.T) {
+	t.Parallel()
+	currencyPair, err := currency.NewPairFromString(testSymbol)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = h.GetHistoricTrades(currencyPair, asset.Spot, time.Now().Add(-time.Minute*15), time.Now())
+	if err != nil && err != common.ErrFunctionNotSupported {
+		t.Error(err)
 	}
 }

@@ -16,26 +16,27 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/stream/buffer"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/websocket/wshandler"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/websocket/wsorderbook"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
 )
 
 const (
-	wsContractURL = "wss://ws-contract.coinbene.vip/openapi/ws"
-	event         = "event"
-	topic         = "topic"
+	wsContractURL     = "wss://ws.coinbene.com/stream/ws"
+	event             = "event"
+	topic             = "topic"
+	swapChannelPrefix = "btc/"
+	spotChannelPrefix = "spot/"
 )
-
-var comms = make(chan wshandler.WebsocketResponse)
 
 // WsConnect connects to websocket
 func (c *Coinbene) WsConnect() error {
 	if !c.Websocket.IsEnabled() || !c.IsEnabled() {
-		return errors.New(wshandler.WebsocketNotEnabled)
+		return errors.New(stream.WebsocketNotEnabled)
 	}
 	var dialer websocket.Dialer
-	err := c.WebsocketConn.Dial(&dialer, http.Header{})
+	err := c.Websocket.Conn.Dial(&dialer, http.Header{})
 	if err != nil {
 		return err
 	}
@@ -48,38 +49,58 @@ func (c *Coinbene) WsConnect() error {
 			c.Websocket.SetCanUseAuthenticatedEndpoints(false)
 		}
 	}
-	c.GenerateDefaultSubscriptions()
-
-	return nil
+	subs, err := c.GenerateDefaultSubscriptions()
+	if err != nil {
+		return err
+	}
+	return c.Websocket.SubscribeToChannels(subs)
 }
 
 // GenerateDefaultSubscriptions generates stuff
-func (c *Coinbene) GenerateDefaultSubscriptions() {
-	var channels = []string{"orderBook.%s.100", "tradeList.%s", "ticker.%s", "kline.%s"}
-	var subscriptions []wshandler.WebsocketChannelSubscription
-	pairs := c.GetEnabledPairs(asset.PerpetualSwap)
+func (c *Coinbene) GenerateDefaultSubscriptions() ([]stream.ChannelSubscription, error) {
+	var channels = []string{"orderBook.%s.100", "tradeList.%s", "ticker.%s", "kline.%s.1h"}
+	var subscriptions []stream.ChannelSubscription
+	perpetualPairs, err := c.GetEnabledPairs(asset.PerpetualSwap)
+	if err != nil {
+		return nil, err
+	}
+	var spotPairs currency.Pairs
+	spotPairs, err = c.GetEnabledPairs(asset.Spot)
+	if err != nil {
+		return nil, err
+	}
 	for x := range channels {
-		for y := range pairs {
-			pairs[y].Delimiter = ""
-			subscriptions = append(subscriptions, wshandler.WebsocketChannelSubscription{
-				Channel:  fmt.Sprintf(channels[x], pairs[y]),
-				Currency: pairs[y],
+		for y := range perpetualPairs {
+			perpetualPairs[y].Delimiter = ""
+			subscriptions = append(subscriptions, stream.ChannelSubscription{
+				Channel:  swapChannelPrefix + fmt.Sprintf(channels[x], perpetualPairs[y]),
+				Currency: perpetualPairs[y],
+				Asset:    asset.PerpetualSwap,
+			})
+		}
+		for z := range spotPairs {
+			spotPairs[z].Delimiter = ""
+			subscriptions = append(subscriptions, stream.ChannelSubscription{
+				Channel:  spotChannelPrefix + fmt.Sprintf(channels[x], spotPairs[z]),
+				Currency: spotPairs[z],
+				Asset:    asset.Spot,
 			})
 		}
 	}
-	c.Websocket.SubscribeToChannels(subscriptions)
+
+	return subscriptions, nil
 }
 
 // GenerateAuthSubs generates auth subs
-func (c *Coinbene) GenerateAuthSubs() {
-	var subscriptions []wshandler.WebsocketChannelSubscription
-	var sub wshandler.WebsocketChannelSubscription
+func (c *Coinbene) GenerateAuthSubs() ([]stream.ChannelSubscription, error) {
+	var subscriptions []stream.ChannelSubscription
+	var sub stream.ChannelSubscription
 	var userChannels = []string{"user.account", "user.position", "user.order"}
 	for z := range userChannels {
 		sub.Channel = userChannels[z]
 		subscriptions = append(subscriptions, sub)
 	}
-	c.Websocket.SubscribeToChannels(subscriptions)
+	return subscriptions, nil
 }
 
 // wsReadData receives and passes on websocket messages for processing
@@ -87,27 +108,27 @@ func (c *Coinbene) wsReadData() {
 	c.Websocket.Wg.Add(1)
 	defer c.Websocket.Wg.Done()
 	for {
-		select {
-		case <-c.Websocket.ShutdownC:
+		resp := c.Websocket.Conn.ReadMessage()
+		if resp.Raw == nil {
 			return
-		default:
-			resp, err := c.WebsocketConn.ReadMessage()
-			if err != nil {
-				c.Websocket.ReadMessageErrors <- err
-				return
-			}
-			err = c.wsHandleData(resp.Raw)
-			if err != nil {
-				c.Websocket.DataHandler <- err
-			}
+		}
+		err := c.wsHandleData(resp.Raw)
+		if err != nil {
+			c.Websocket.DataHandler <- err
 		}
 	}
 }
 
+func inferAssetFromTopic(topic string) asset.Item {
+	if strings.Contains(topic, "spot/") {
+		return asset.Spot
+	}
+	return asset.PerpetualSwap
+}
+
 func (c *Coinbene) wsHandleData(respRaw []byte) error {
-	c.Websocket.TrafficAlert <- struct{}{}
-	if string(respRaw) == wshandler.Ping {
-		err := c.WebsocketConn.SendRawMessage(websocket.TextMessage, []byte(wshandler.Pong))
+	if string(respRaw) == stream.Ping {
+		err := c.Websocket.Conn.SendRawMessage(websocket.TextMessage, []byte(stream.Pong))
 		if err != nil {
 			return err
 		}
@@ -128,12 +149,18 @@ func (c *Coinbene) wsHandleData(respRaw []byte) error {
 	if ok && strings.Contains(result[event].(string), "login") {
 		if result["success"].(bool) {
 			c.Websocket.SetCanUseAuthenticatedEndpoints(true)
-			c.GenerateAuthSubs()
-			return nil
+			var authsubs []stream.ChannelSubscription
+			authsubs, err = c.GenerateAuthSubs()
+			if err != nil {
+				return err
+			}
+			return c.Websocket.SubscribeToChannels(authsubs)
 		}
 		c.Websocket.SetCanUseAuthenticatedEndpoints(false)
 		return fmt.Errorf("message: %s. code: %v", result["message"], result["code"])
 	}
+	assetType := inferAssetFromTopic(result[topic].(string))
+	var newPair currency.Pair
 	switch {
 	case strings.Contains(result[topic].(string), "ticker"):
 		var wsTicker WsTicker
@@ -141,77 +168,79 @@ func (c *Coinbene) wsHandleData(respRaw []byte) error {
 		if err != nil {
 			return err
 		}
+		newPair, err = c.getCurrencyFromWsTopic(assetType, wsTicker.Topic)
+		if err != nil {
+			return err
+		}
+
 		for x := range wsTicker.Data {
 			c.Websocket.DataHandler <- &ticker.Price{
-				Volume: wsTicker.Data[x].Volume24h,
-				Last:   wsTicker.Data[x].LastPrice,
-				High:   wsTicker.Data[x].High24h,
-				Low:    wsTicker.Data[x].Low24h,
-				Bid:    wsTicker.Data[x].BestBidPrice,
-				Ask:    wsTicker.Data[x].BestAskPrice,
-				Pair: currency.NewPairFromFormattedPairs(wsTicker.Data[x].Symbol,
-					c.GetEnabledPairs(asset.PerpetualSwap),
-					c.GetPairFormat(asset.PerpetualSwap, true)),
+				Volume:       wsTicker.Data[x].Volume24h,
+				Last:         wsTicker.Data[x].LastPrice,
+				High:         wsTicker.Data[x].High24h,
+				Low:          wsTicker.Data[x].Low24h,
+				Bid:          wsTicker.Data[x].BestBidPrice,
+				Ask:          wsTicker.Data[x].BestAskPrice,
+				Pair:         newPair,
 				ExchangeName: c.Name,
-				AssetType:    asset.PerpetualSwap,
-				LastUpdated:  wsTicker.Data[x].Timestamp,
+				AssetType:    assetType,
+				LastUpdated:  time.Unix(wsTicker.Data[x].Timestamp, 0),
 			}
 		}
 	case strings.Contains(result[topic].(string), "tradeList"):
+		if !c.IsSaveTradeDataEnabled() {
+			return nil
+		}
 		var tradeList WsTradeList
 		err = json.Unmarshal(respRaw, &tradeList)
 		if err != nil {
 			return err
 		}
-		var t time.Time
-		var price, amount float64
-		t, err = time.Parse(time.RFC3339, tradeList.Data[0][3])
-		if err != nil {
-			return err
+		var trades []trade.Data
+		for i := range tradeList.Data {
+			var price, amount float64
+			t := time.Unix(int64(tradeList.Data[i][3].(float64))/1000, 0)
+			price, err = strconv.ParseFloat(tradeList.Data[i][0].(string), 64)
+			if err != nil {
+				return err
+			}
+			amount, err = strconv.ParseFloat(tradeList.Data[i][2].(string), 64)
+			if err != nil {
+				return err
+			}
+
+			var tSide = order.Buy
+			if tradeList.Data[i][1] == "s" {
+				tSide = order.Sell
+			}
+
+			newPair, err = c.getCurrencyFromWsTopic(assetType, tradeList.Topic)
+			if err != nil {
+				return err
+			}
+
+			trades = append(trades, trade.Data{
+				Timestamp:    t,
+				Exchange:     c.Name,
+				CurrencyPair: newPair,
+				AssetType:    assetType,
+				Price:        price,
+				Amount:       amount,
+				Side:         tSide,
+			})
 		}
-		price, err = strconv.ParseFloat(tradeList.Data[0][0], 64)
-		if err != nil {
-			return err
-		}
-		amount, err = strconv.ParseFloat(tradeList.Data[0][2], 64)
-		if err != nil {
-			return err
-		}
-		p := strings.Replace(tradeList.Topic, "tradeList.", "", 1)
-		var tSide = order.Buy
-		if tradeList.Data[0][1] == "s" {
-			tSide = order.Sell
-		}
-		c.Websocket.DataHandler <- wshandler.TradeData{
-			CurrencyPair: currency.NewPairFromFormattedPairs(p,
-				c.GetEnabledPairs(asset.PerpetualSwap),
-				c.GetPairFormat(asset.PerpetualSwap, true)),
-			Timestamp: t,
-			Price:     price,
-			Amount:    amount,
-			Exchange:  c.Name,
-			AssetType: asset.PerpetualSwap,
-			Side:      tSide,
-		}
+		return trade.AddTradesToBuffer(c.Name, trades...)
 	case strings.Contains(result[topic].(string), "orderBook"):
-		orderBook := struct {
-			Topic  string `json:"topic"`
-			Action string `json:"action"`
-			Data   []struct {
-				Bids      [][]string `json:"bids"`
-				Asks      [][]string `json:"asks"`
-				Version   int64      `json:"version"`
-				Timestamp time.Time  `json:"timestamp"`
-			} `json:"data"`
-		}{}
+		var orderBook WsOrderbookData
 		err = json.Unmarshal(respRaw, &orderBook)
 		if err != nil {
 			return err
 		}
-		p := strings.Replace(orderBook.Topic, "orderBook.", "", 1)
-		cp := currency.NewPairFromFormattedPairs(p,
-			c.GetEnabledPairs(asset.PerpetualSwap),
-			c.GetPairFormat(asset.PerpetualSwap, true))
+
+		newPair, err = c.getCurrencyFromWsTopic(assetType, orderBook.Topic)
+		if err != nil {
+			return err
+		}
 		var amount, price float64
 		var asks, bids []orderbook.Item
 		for i := range orderBook.Data[0].Asks {
@@ -246,67 +275,51 @@ func (c *Coinbene) wsHandleData(respRaw []byte) error {
 			var newOB orderbook.Base
 			newOB.Asks = asks
 			newOB.Bids = bids
-			newOB.AssetType = asset.PerpetualSwap
-			newOB.Pair = cp
+			newOB.AssetType = assetType
+			newOB.Pair = newPair
 			newOB.ExchangeName = c.Name
-			newOB.LastUpdated = orderBook.Data[0].Timestamp
+			newOB.LastUpdated = time.Unix(orderBook.Data[0].Timestamp, 0)
 			err = c.Websocket.Orderbook.LoadSnapshot(&newOB)
 			if err != nil {
 				return err
 			}
-			c.Websocket.DataHandler <- wshandler.WebsocketOrderbookUpdate{Pair: newOB.Pair,
-				Asset:    asset.PerpetualSwap,
-				Exchange: c.Name,
-			}
 		} else if orderBook.Action == "update" {
-			newOB := wsorderbook.WebsocketOrderbookUpdate{
+			newOB := buffer.Update{
 				Asks:       asks,
 				Bids:       bids,
-				Asset:      asset.PerpetualSwap,
-				Pair:       cp,
+				Asset:      assetType,
+				Pair:       newPair,
 				UpdateID:   orderBook.Data[0].Version,
-				UpdateTime: orderBook.Data[0].Timestamp,
+				UpdateTime: time.Unix(orderBook.Data[0].Timestamp, 0),
 			}
 			err = c.Websocket.Orderbook.Update(&newOB)
 			if err != nil {
 				return err
 			}
-			c.Websocket.DataHandler <- wshandler.WebsocketOrderbookUpdate{Pair: newOB.Pair,
-				Asset:    asset.PerpetualSwap,
-				Exchange: c.Name,
-			}
 		}
 	case strings.Contains(result[topic].(string), "kline"):
-		var kline WsKline
-		var tempFloat float64
-		var tempKline []float64
-		err = json.Unmarshal(respRaw, &kline)
+		var candleData WsKline
+		err = json.Unmarshal(respRaw, &candleData)
 		if err != nil {
 			return err
 		}
-		for x := 2; x < len(kline.Data[0]); x++ {
-			tempFloat, err = strconv.ParseFloat(kline.Data[0][x].(string), 64)
-			if err != nil {
-				return err
+		newPair, err = c.getCurrencyFromWsTopic(assetType, candleData.Topic)
+		if err != nil {
+			return err
+		}
+
+		for i := range candleData.Data {
+			c.Websocket.DataHandler <- stream.KlineData{
+				Pair:       newPair,
+				AssetType:  assetType,
+				Exchange:   c.Name,
+				OpenPrice:  candleData.Data[i].Open,
+				HighPrice:  candleData.Data[i].High,
+				LowPrice:   candleData.Data[i].Low,
+				ClosePrice: candleData.Data[i].Close,
+				Volume:     candleData.Data[i].Volume,
+				Timestamp:  time.Unix(candleData.Data[i].Timestamp, 0),
 			}
-			tempKline = append(tempKline, tempFloat)
-		}
-		p := currency.NewPairFromFormattedPairs(kline.Data[0][0].(string),
-			c.GetEnabledPairs(asset.PerpetualSwap),
-			c.GetPairFormat(asset.PerpetualSwap, true))
-		if tempKline == nil && len(tempKline) < 5 {
-			return errors.New(c.Name + " - received bad data ")
-		}
-		c.Websocket.DataHandler <- wshandler.KlineData{
-			Timestamp:  time.Unix(int64(kline.Data[0][1].(float64)), 0),
-			Pair:       p,
-			AssetType:  asset.PerpetualSwap,
-			Exchange:   c.Name,
-			OpenPrice:  tempKline[0],
-			ClosePrice: tempKline[1],
-			HighPrice:  tempKline[2],
-			LowPrice:   tempKline[3],
-			Volume:     tempKline[4],
 		}
 	case strings.Contains(result[topic].(string), "user.account"):
 		var userInfo WsUserInfo
@@ -328,6 +341,17 @@ func (c *Coinbene) wsHandleData(respRaw []byte) error {
 		if err != nil {
 			return err
 		}
+
+		format, err := c.GetPairFormat(assetType, true)
+		if err != nil {
+			return err
+		}
+
+		pairs, err := c.GetEnabledPairs(assetType)
+		if err != nil {
+			return err
+		}
+
 		for i := range orders.Data {
 			oType, err := order.StringToOrderType(orders.Data[i].OrderType)
 			if err != nil {
@@ -345,6 +369,14 @@ func (c *Coinbene) wsHandleData(respRaw []byte) error {
 					Err:      err,
 				}
 			}
+
+			newPair, err = currency.NewPairFromFormattedPairs(orders.Data[i].Symbol,
+				pairs,
+				format)
+			if err != nil {
+				return err
+			}
+
 			c.Websocket.DataHandler <- &order.Detail{
 				Price:           orders.Data[i].OrderPrice,
 				Amount:          orders.Data[i].Quantity,
@@ -355,35 +387,96 @@ func (c *Coinbene) wsHandleData(respRaw []byte) error {
 				ID:              orders.Data[i].OrderID,
 				Type:            oType,
 				Status:          oStatus,
-				AssetType:       asset.PerpetualSwap,
+				AssetType:       assetType,
 				Date:            orders.Data[i].OrderTime,
 				Leverage:        strconv.FormatInt(orders.Data[i].Leverage, 10),
-				Pair: currency.NewPairFromFormattedPairs(orders.Data[i].Symbol,
-					c.GetEnabledPairs(asset.PerpetualSwap),
-					c.GetPairFormat(asset.PerpetualSwap, true)),
+				Pair:            newPair,
 			}
 		}
 	default:
-		c.Websocket.DataHandler <- wshandler.UnhandledMessageWarning{Message: c.Name + wshandler.UnhandledMessage + string(respRaw)}
+		c.Websocket.DataHandler <- stream.UnhandledMessageWarning{
+			Message: c.Name + stream.UnhandledMessage + string(respRaw),
+		}
 		return nil
 	}
 	return nil
 }
 
+func (c *Coinbene) getCurrencyFromWsTopic(assetType asset.Item, channelTopic string) (cp currency.Pair, err error) {
+	var format currency.PairFormat
+	format, err = c.GetPairFormat(assetType, true)
+	if err != nil {
+		return cp, err
+	}
+
+	var pairs currency.Pairs
+	pairs, err = c.GetEnabledPairs(assetType)
+	if err != nil {
+		return cp, err
+	}
+	// channel topics are formatted as "spot/orderbook.BTCUSDT"
+	channelSplit := strings.Split(channelTopic, ".")
+	if len(channelSplit) == 1 {
+		return currency.Pair{}, errors.New("no currency found in topic " + channelTopic)
+	}
+	cp, err = currency.MatchPairsWithNoDelimiter(channelSplit[1], pairs, format)
+	if err != nil {
+		return cp, err
+	}
+	if !pairs.Contains(cp, true) {
+		return cp, fmt.Errorf("currency %s not found in enabled pairs", cp.String())
+	}
+	return cp, nil
+}
+
 // Subscribe sends a websocket message to receive data from the channel
-func (c *Coinbene) Subscribe(channelToSubscribe wshandler.WebsocketChannelSubscription) error {
+func (c *Coinbene) Subscribe(channelsToSubscribe []stream.ChannelSubscription) error {
 	var sub WsSub
 	sub.Operation = "subscribe"
-	sub.Arguments = []string{channelToSubscribe.Channel}
-	return c.WebsocketConn.SendJSONMessage(sub)
+	// enabling all currencies can lead to a message too large being sent
+	// and no subscriptions being made
+	chanLimit := 10
+	for i := range channelsToSubscribe {
+		if len(sub.Arguments) > chanLimit {
+			err := c.Websocket.Conn.SendJSONMessage(sub)
+			if err != nil {
+				return err
+			}
+			sub.Arguments = []string{}
+		}
+		sub.Arguments = append(sub.Arguments, channelsToSubscribe[i].Channel)
+	}
+	err := c.Websocket.Conn.SendJSONMessage(sub)
+	if err != nil {
+		return err
+	}
+	c.Websocket.AddSuccessfulSubscriptions(channelsToSubscribe...)
+	return nil
 }
 
 // Unsubscribe sends a websocket message to receive data from the channel
-func (c *Coinbene) Unsubscribe(channelToSubscribe wshandler.WebsocketChannelSubscription) error {
-	var sub WsSub
-	sub.Operation = "unsubscribe"
-	sub.Arguments = []string{channelToSubscribe.Channel}
-	return c.WebsocketConn.SendJSONMessage(sub)
+func (c *Coinbene) Unsubscribe(channelToUnsubscribe []stream.ChannelSubscription) error {
+	var unsub WsSub
+	unsub.Operation = "unsubscribe"
+	// enabling all currencies can lead to a message too large being sent
+	// and no unsubscribes being made
+	chanLimit := 10
+	for i := range channelToUnsubscribe {
+		if len(unsub.Arguments) > chanLimit {
+			err := c.Websocket.Conn.SendJSONMessage(unsub)
+			if err != nil {
+				return err
+			}
+			unsub.Arguments = []string{}
+		}
+		unsub.Arguments = append(unsub.Arguments, channelToUnsubscribe[i].Channel)
+	}
+	err := c.Websocket.Conn.SendJSONMessage(unsub)
+	if err != nil {
+		return err
+	}
+	c.Websocket.RemoveSuccessfulUnsubscriptions(channelToUnsubscribe...)
+	return nil
 }
 
 // Login logs in
@@ -397,5 +490,5 @@ func (c *Coinbene) Login() error {
 	sign := crypto.HexEncodeToString(tempSign)
 	sub.Operation = "login"
 	sub.Arguments = []string{c.API.Credentials.Key, expTime, sign}
-	return c.WebsocketConn.SendJSONMessage(sub)
+	return c.Websocket.Conn.SendJSONMessage(sub)
 }

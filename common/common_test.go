@@ -1,6 +1,7 @@
 package common
 
 import (
+	"errors"
 	"net/url"
 	"os"
 	"os/user"
@@ -232,9 +233,9 @@ func TestSendHTTPGetRequest(t *testing.T) {
 	type test struct {
 		Address string `json:"address"`
 		ETH     struct {
-			Balance  int `json:"balance"`
-			TotalIn  int `json:"totalIn"`
-			TotalOut int `json:"totalOut"`
+			Balance  float64 `json:"balance"`
+			TotalIn  float64 `json:"totalIn"`
+			TotalOut float64 `json:"totalOut"`
 		} `json:"ETH"`
 	}
 	ethURL := `https://api.ethplorer.io/getAddressInfo/0xff71cb760666ab06aa73f34995b42dd4b85ea07b?apiKey=freekey`
@@ -545,5 +546,20 @@ func TestInArray(t *testing.T) {
 	isIn, _ = InArray(1, slice)
 	if isIn {
 		t.Errorf("found a non existent value in the slice")
+	}
+}
+
+func TestErrors(t *testing.T) {
+	var test Errors
+	if test.Error() != "" {
+		t.Fatal("string should be nil")
+	}
+	test = append(test, errors.New("test1"))
+	if test.Error() != "test1" {
+		t.Fatal("does not match error")
+	}
+	test = append(test, errors.New("test2"))
+	if test.Error() != "test1, test2" {
+		t.Fatal("does not match error")
 	}
 }

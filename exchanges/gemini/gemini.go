@@ -14,7 +14,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/common/crypto"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/websocket/wshandler"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
@@ -58,11 +58,10 @@ const (
 // AddSession, if sandbox test is needed append a new session with with the same
 // API keys and change the IsSandbox variable to true.
 type Gemini struct {
-	WebsocketConn              *wshandler.WebsocketConnection
-	AuthenticatedWebsocketConn *wshandler.WebsocketConnection
 	exchange.Base
 	Role              string
 	RequiresHeartBeat bool
+	connections       []stream.Connection
 }
 
 // GetSymbols returns all available symbols for trading
@@ -108,7 +107,7 @@ func (g *Gemini) GetOrderbook(currencyPair string, params url.Values) (Orderbook
 	return orderbook, g.SendHTTPRequest(path, &orderbook)
 }
 
-// GetTrades eturn the trades that have executed since the specified timestamp.
+// GetTrades return the trades that have executed since the specified timestamp.
 // Timestamps are either seconds or milliseconds since the epoch (1970-01-01).
 //
 // currencyPair - example "btcusd"
@@ -117,7 +116,17 @@ func (g *Gemini) GetOrderbook(currencyPair string, params url.Values) (Orderbook
 // limit_trades	integer	Optional. The maximum number of trades to return.
 // include_breaks	boolean	Optional. Whether to display broken trades. False by
 // default. Can be '1' or 'true' to activate
-func (g *Gemini) GetTrades(currencyPair string, params url.Values) ([]Trade, error) {
+func (g *Gemini) GetTrades(currencyPair string, since, limit int64, includeBreaks bool) ([]Trade, error) {
+	params := url.Values{}
+	if since > 0 {
+		params.Add("since", strconv.FormatInt(since, 10))
+	}
+	if limit > 0 {
+		params.Add("limit_trades", strconv.FormatInt(limit, 10))
+	}
+	if includeBreaks {
+		params.Add("include_breaks", strconv.FormatBool(true))
+	}
 	path := common.EncodeURLValues(fmt.Sprintf("%s/v%s/%s/%s", g.API.Endpoints.URL, geminiAPIVersion, geminiTrades, currencyPair), params)
 	var trades []Trade
 

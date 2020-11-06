@@ -5,11 +5,13 @@ import (
 	"log"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/core"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
@@ -479,11 +481,12 @@ func TestSubmitOrder(t *testing.T) {
 			Base:      currency.BTC,
 			Quote:     currency.USD,
 		},
-		Side:     order.Buy,
-		Type:     order.Limit,
-		Price:    1,
-		Amount:   1,
-		ClientID: "meowOrder",
+		Side:      order.Buy,
+		Type:      order.Limit,
+		Price:     1,
+		Amount:    1,
+		ClientID:  "meowOrder",
+		AssetType: asset.Spot,
 	}
 
 	response, err := a.SubmitOrder(orderSubmission)
@@ -511,6 +514,7 @@ func TestCancelExchangeOrder(t *testing.T) {
 		WalletAddress: core.BitcoinDonationAddress,
 		AccountID:     "1",
 		Pair:          currencyPair,
+		AssetType:     asset.Spot,
 	}
 
 	err := a.CancelOrder(orderCancellation)
@@ -534,6 +538,7 @@ func TestCancelAllExchangeOrders(t *testing.T) {
 		WalletAddress: core.BitcoinDonationAddress,
 		AccountID:     "1",
 		Pair:          currencyPair,
+		AssetType:     asset.Spot,
 	}
 
 	resp, err := a.CancelAllOrders(orderCancellation)
@@ -554,7 +559,7 @@ func TestModifyOrder(t *testing.T) {
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
-	_, err := a.ModifyOrder(&order.Modify{})
+	_, err := a.ModifyOrder(&order.Modify{AssetType: asset.Spot})
 	if err == nil {
 		t.Error("ModifyOrder() Expected error")
 	}
@@ -589,5 +594,29 @@ func TestWithdrawInternationalBank(t *testing.T) {
 	_, err := a.WithdrawFiatFundsToInternationalBank(&withdraw.Request{})
 	if err != common.ErrNotYetImplemented {
 		t.Errorf("Expected '%v', received: '%v'", common.ErrNotYetImplemented, err)
+	}
+}
+
+func TestGetRecentTrades(t *testing.T) {
+	t.Parallel()
+	currencyPair, err := currency.NewPairFromString("btc_usdt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = a.GetRecentTrades(currencyPair, asset.Spot)
+	if err != nil && err != common.ErrNotYetImplemented {
+		t.Error(err)
+	}
+}
+
+func TestGetHistoricTrades(t *testing.T) {
+	t.Parallel()
+	currencyPair, err := currency.NewPairFromString("btc_usdt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = a.GetHistoricTrades(currencyPair, asset.Spot, time.Now().Add(-time.Minute*15), time.Now())
+	if err != nil && err != common.ErrNotYetImplemented {
+		t.Error(err)
 	}
 }

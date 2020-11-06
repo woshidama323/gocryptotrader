@@ -4,12 +4,14 @@ import (
 	"log"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/config"
 	"github.com/thrasher-corp/gocryptotrader/core"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
@@ -343,14 +345,19 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 }
 
 func TestGetActiveOrders(t *testing.T) {
+	p, err := currency.NewPairFromString(currPair)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	var getOrdersRequest = order.GetOrdersRequest{
 		Type:  order.AnyType,
-		Pairs: []currency.Pair{currency.NewPairFromString(currPair)},
+		Pairs: []currency.Pair{p},
 	}
 
 	getOrdersRequest.Pairs[0].Delimiter = "-"
 
-	_, err := b.GetActiveOrders(&getOrdersRequest)
+	_, err = b.GetActiveOrders(&getOrdersRequest)
 	if areTestAPIKeysSet() && err != nil {
 		t.Errorf("Could not get open orders: %s", err)
 	} else if !areTestAPIKeysSet() && err == nil {
@@ -388,11 +395,12 @@ func TestSubmitOrder(t *testing.T) {
 			Base:      currency.BTC,
 			Quote:     currency.LTC,
 		},
-		Side:     order.Buy,
-		Type:     order.Limit,
-		Price:    1,
-		Amount:   1,
-		ClientID: "meowOrder",
+		Side:      order.Buy,
+		Type:      order.Limit,
+		Price:     1,
+		Amount:    1,
+		ClientID:  "meowOrder",
+		AssetType: asset.Spot,
 	}
 	response, err := b.SubmitOrder(orderSubmission)
 	if areTestAPIKeysSet() && (err != nil || !response.IsOrderPlaced) {
@@ -413,6 +421,7 @@ func TestCancelExchangeOrder(t *testing.T) {
 		WalletAddress: core.BitcoinDonationAddress,
 		AccountID:     "1",
 		Pair:          currencyPair,
+		AssetType:     asset.Spot,
 	}
 
 	err := b.CancelOrder(orderCancellation)
@@ -435,6 +444,7 @@ func TestCancelAllExchangeOrders(t *testing.T) {
 		WalletAddress: core.BitcoinDonationAddress,
 		AccountID:     "1",
 		Pair:          currencyPair,
+		AssetType:     asset.Spot,
 	}
 
 	resp, err := b.CancelAllOrders(orderCancellation)
@@ -455,7 +465,7 @@ func TestModifyOrder(t *testing.T) {
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
-	_, err := b.ModifyOrder(&order.Modify{})
+	_, err := b.ModifyOrder(&order.Modify{AssetType: asset.Spot})
 	if err == nil {
 		t.Error("Expected error")
 	}
@@ -466,7 +476,7 @@ func TestWithdraw(t *testing.T) {
 		Amount:      -1,
 		Currency:    currency.BTC,
 		Description: "WITHDRAW IT ALL",
-		Crypto: &withdraw.CryptoRequest{
+		Crypto: withdraw.CryptoRequest{
 			Address: core.BitcoinDonationAddress,
 		},
 	}
@@ -539,5 +549,29 @@ func TestParseTime(t *testing.T) {
 		tm.Minute() != 8 ||
 		tm.Second() != 34 {
 		t.Error("invalid time values")
+	}
+}
+
+func TestGetRecentTrades(t *testing.T) {
+	t.Parallel()
+	currencyPair, err := currency.NewPairFromString(currPair)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = b.GetRecentTrades(currencyPair, asset.Spot)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestGetHistoricTrades(t *testing.T) {
+	t.Parallel()
+	currencyPair, err := currency.NewPairFromString(currPair)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = b.GetHistoricTrades(currencyPair, asset.Spot, time.Now().Add(-time.Minute*15), time.Now())
+	if err != nil && err != common.ErrFunctionNotSupported {
+		t.Fatal(err)
 	}
 }

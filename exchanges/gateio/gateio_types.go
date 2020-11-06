@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/currency"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
 )
 
 // TimeInterval Interval represents interval enum.
@@ -52,7 +53,7 @@ type BalancesResponse struct {
 type KlinesRequestParams struct {
 	Symbol   string // Required field; example LTCBTC,BTCUSDT
 	HourSize int    // How many hours of data
-	GroupSec TimeInterval
+	GroupSec string
 }
 
 // KLineResponse holds the kline response data
@@ -161,6 +162,7 @@ type TradesResponse struct {
 	OrderID  int64   `json:"orderNumber"`
 	Pair     string  `json:"pair"`
 	Type     string  `json:"type"`
+	Side     string  `json:"side"`
 	Rate     float64 `json:"rate,string"`
 	Amount   float64 `json:"amount,string"`
 	Total    float64 `json:"total"`
@@ -379,9 +381,10 @@ var WithdrawalFees = map[currency.Code]float64{
 
 // WebsocketRequest defines the initial request in JSON
 type WebsocketRequest struct {
-	ID     int64         `json:"id"`
-	Method string        `json:"method"`
-	Params []interface{} `json:"params"`
+	ID       int64                        `json:"id"`
+	Method   string                       `json:"method"`
+	Params   []interface{}                `json:"params"`
+	Channels []stream.ChannelSubscription `json:"-"` // used for tracking associated channel subs on batched requests
 }
 
 // WebsocketResponse defines a websocket response from gateio
@@ -437,6 +440,7 @@ type WebsocketBalanceCurrency struct {
 
 // WebSocketOrderQueryResult data returned from a websocket ordre query holds slice of WebSocketOrderQueryRecords
 type WebSocketOrderQueryResult struct {
+	Error                      WebsocketError               `json:"error"`
 	Limit                      int                          `json:"limit"`
 	Offset                     int                          `json:"offset"`
 	Total                      int                          `json:"total"`
@@ -462,7 +466,10 @@ type WebSocketOrderQueryRecords struct {
 
 // WebsocketAuthenticationResponse contains the result of a login request
 type WebsocketAuthenticationResponse struct {
-	Error  string `json:"error,omitempty"`
+	Error struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
 	Result struct {
 		Status string `json:"status"`
 	} `json:"result"`
@@ -478,7 +485,7 @@ type wsGetBalanceRequest struct {
 
 // WsGetBalanceResponse stores WS GetBalance response
 type WsGetBalanceResponse struct {
-	Error  interface{}                         `json:"error"`
+	Error  WebsocketError                      `json:"error"`
 	Result map[string]WsGetBalanceResponseData `json:"result"`
 	ID     int64                               `json:"id"`
 }
@@ -499,4 +506,22 @@ type wsOrderUpdate struct {
 	ID     int64         `json:"id"`
 	Method string        `json:"method"`
 	Params []interface{} `json:"params"`
+}
+
+// TradeHistory contains trade history data
+type TradeHistory struct {
+	Elapsed string              `json:"elapsed"`
+	Result  bool                `json:"result,string"`
+	Data    []TradeHistoryEntry `json:"data"`
+}
+
+// TradeHistoryEntry contains an individual trade
+type TradeHistoryEntry struct {
+	Amount    float64 `json:"amount,string"`
+	Date      string  `json:"date"`
+	Rate      float64 `json:"rate,string"`
+	Timestamp int64   `json:"timestamp,string"`
+	Total     float64 `json:"total,string"`
+	TradeID   string  `json:"tradeID"`
+	Type      string  `json:"type"`
 }

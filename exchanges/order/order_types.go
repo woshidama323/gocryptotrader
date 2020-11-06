@@ -2,7 +2,6 @@ package order
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/currency"
@@ -12,11 +11,16 @@ import (
 // var error definitions
 var (
 	ErrSubmissionIsNil            = errors.New("order submission is nil")
+	ErrCancelOrderIsNil           = errors.New("cancel order is nil")
+	ErrGetOrdersRequestIsNil      = errors.New("get order request is nil")
+	ErrModifyOrderIsNil           = errors.New("modify order request is nil")
 	ErrPairIsEmpty                = errors.New("order pair is empty")
+	ErrAssetNotSet                = errors.New("order asset type is not set")
 	ErrSideIsInvalid              = errors.New("order side is invalid")
 	ErrTypeIsInvalid              = errors.New("order type is invalid")
 	ErrAmountIsInvalid            = errors.New("order amount is invalid")
 	ErrPriceMustBeSetIfLimitOrder = errors.New("order price must be set if limit order type is desired")
+	ErrOrderIDNotSet              = errors.New("order id or client order id is not set")
 )
 
 // Submit contains all properties of an order that may be required
@@ -43,6 +47,7 @@ type Submit struct {
 	ID                string
 	AccountID         string
 	ClientID          string
+	ClientOrderID     string
 	WalletAddress     string
 	Type              Type
 	Side              Side
@@ -59,6 +64,10 @@ type SubmitResponse struct {
 	IsOrderPlaced bool
 	FullyMatched  bool
 	OrderID       string
+	Rate          float64
+	Fee           float64
+	Cost          float64
+	Trades        []TradeHistory
 }
 
 // Modify contains all properties of an order
@@ -83,6 +92,7 @@ type Modify struct {
 	Exchange          string
 	InternalOrderID   string
 	ID                string
+	ClientOrderID     string
 	AccountID         string
 	ClientID          string
 	WalletAddress     string
@@ -118,10 +128,12 @@ type Detail struct {
 	TargetAmount      float64
 	ExecutedAmount    float64
 	RemainingAmount   float64
+	Cost              float64
 	Fee               float64
 	Exchange          string
 	InternalOrderID   string
 	ID                string
+	ClientOrderID     string
 	AccountID         string
 	ClientID          string
 	WalletAddress     string
@@ -130,6 +142,7 @@ type Detail struct {
 	Status            Status
 	AssetType         asset.Item
 	Date              time.Time
+	CloseTime         time.Time
 	LastUpdated       time.Time
 	Pair              currency.Pair
 	Trades            []TradeHistory
@@ -144,6 +157,7 @@ type Cancel struct {
 	Amount        float64
 	Exchange      string
 	ID            string
+	ClientOrderID string
 	AccountID     string
 	ClientID      string
 	WalletAddress string
@@ -174,6 +188,7 @@ type TradeHistory struct {
 	Side        Side
 	Timestamp   time.Time
 	IsMaker     bool
+	FeeAsset    string
 }
 
 // GetOrdersRequest used for GetOrderHistory and GetOpenOrders wrapper functions
@@ -182,9 +197,11 @@ type GetOrdersRequest struct {
 	Side       Side
 	StartTicks time.Time
 	EndTicks   time.Time
+	OrderID    string
 	// Currencies Empty array = all currencies. Some endpoints only support
 	// singular currency enquiries
-	Pairs []currency.Pair
+	Pairs     []currency.Pair
+	AssetType asset.Item
 }
 
 // Status defines order status types
@@ -207,6 +224,7 @@ const (
 	Hidden              Status = "HIDDEN"
 	UnknownStatus       Status = "UNKNOWN"
 	Open                Status = "OPEN"
+	Closed              Status = "CLOSED"
 )
 
 // Type enforces a standard for order types across the code base
@@ -217,9 +235,13 @@ const (
 	AnyType           Type = "ANY"
 	Limit             Type = "LIMIT"
 	Market            Type = "MARKET"
+	PostOnly          Type = "POST_ONLY"
 	ImmediateOrCancel Type = "IMMEDIATE_OR_CANCEL"
 	Stop              Type = "STOP"
+	StopLimit         Type = "STOP LIMIT"
 	TrailingStop      Type = "TRAILING_STOP"
+	FillOrKill        Type = "FOK"
+	IOS               Type = "IOS"
 	UnknownType       Type = "UNKNOWN"
 )
 
@@ -257,16 +279,4 @@ type ClassificationError struct {
 	Exchange string
 	OrderID  string
 	Err      error
-}
-
-func (o *ClassificationError) Error() string {
-	if o.OrderID != "" {
-		return fmt.Sprintf("%s - OrderID: %s classification error: %v",
-			o.Exchange,
-			o.OrderID,
-			o.Err)
-	}
-	return fmt.Sprintf("%s - classification error: %v",
-		o.Exchange,
-		o.Err)
 }

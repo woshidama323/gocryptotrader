@@ -254,6 +254,11 @@ func TestCancelOrder(t *testing.T) {
 		t.Error("Expected error due to no order found")
 	}
 
+	pair, err := currency.NewPairFromString("BTCUSD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	cancel := &order.Cancel{
 		Exchange:  fakePassExchange,
 		ID:        "TestCancelOrder",
@@ -261,7 +266,7 @@ func TestCancelOrder(t *testing.T) {
 		Status:    order.New,
 		AssetType: asset.Spot,
 		Date:      time.Now(),
-		Pair:      currency.NewPairFromString("BTCUSD"),
+		Pair:      pair,
 	}
 	err = Bot.OrderManager.Cancel(cancel)
 	if err != nil {
@@ -270,6 +275,31 @@ func TestCancelOrder(t *testing.T) {
 
 	if o.Status != order.Cancelled {
 		t.Error("Failed to cancel")
+	}
+}
+
+func TestGetOrderInfo(t *testing.T) {
+	OrdersSetup(t)
+	_, err := Bot.OrderManager.GetOrderInfo("", "", currency.Pair{}, "")
+	if err == nil {
+		t.Error("Expected error due to empty order")
+	}
+
+	var result order.Detail
+	result, err = Bot.OrderManager.GetOrderInfo(fakePassExchange, "1234", currency.Pair{}, "")
+	if err != nil {
+		t.Error(err)
+	}
+	if result.ID != "fakeOrder" {
+		t.Error("unexpected order returned")
+	}
+
+	result, err = Bot.OrderManager.GetOrderInfo(fakePassExchange, "1234", currency.Pair{}, "")
+	if err != nil {
+		t.Error(err)
+	}
+	if result.ID != "fakeOrder" {
+		t.Error("unexpected order returned")
 	}
 }
 
@@ -326,9 +356,14 @@ func TestSubmit(t *testing.T) {
 		t.Error("Expected error from validation")
 	}
 
+	pair, err := currency.NewPairFromString("BTCUSD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	Bot.OrderManager.cfg.EnforceLimitConfig = true
 	Bot.OrderManager.cfg.AllowMarketOrders = false
-	o.Pair = currency.NewPairFromString("BTCUSD")
+	o.Pair = pair
 	o.AssetType = asset.Spot
 	o.Side = order.Buy
 	o.Amount = 1
@@ -351,8 +386,13 @@ func TestSubmit(t *testing.T) {
 		t.Error("Expected fail due to order exchange not found in allowed list")
 	}
 
+	failPair, err := currency.NewPairFromString("BTCAUD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	Bot.OrderManager.cfg.AllowedExchanges = nil
-	Bot.OrderManager.cfg.AllowedPairs = currency.Pairs{currency.NewPairFromString("BTCAUD")}
+	Bot.OrderManager.cfg.AllowedPairs = currency.Pairs{failPair}
 	_, err = Bot.OrderManager.Submit(o)
 	if err == nil {
 		t.Error("Expected fail due to order pair not found in allowed list")
