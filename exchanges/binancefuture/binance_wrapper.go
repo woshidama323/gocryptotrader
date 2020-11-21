@@ -300,12 +300,13 @@ func (b *Binance) FetchTradablePairs(a asset.Item) ([]string, error) {
 			pair := info.Symbols[x].BaseAsset +
 				format.Delimiter +
 				info.Symbols[x].QuoteAsset
-			if a == asset.Spot && info.Symbols[x].IsSpotTradingAllowed {
-				pairs = append(pairs, pair)
-			}
-			if a == asset.Margin && info.Symbols[x].IsMarginTradingAllowed {
-				pairs = append(pairs, pair)
-			}
+			// if a == asset.Spot && info.Symbols[x].IsSpotTradingAllowed {
+			// 	pairs = append(pairs, pair)
+			// }
+			// if a == asset.Margin && info.Symbols[x].IsMarginTradingAllowed {
+			// 	pairs = append(pairs, pair)
+			// }
+			pairs = append(pairs, pair)
 		}
 	}
 	return pairs, nil
