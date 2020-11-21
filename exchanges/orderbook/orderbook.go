@@ -183,7 +183,8 @@ func (s *Service) Retrieve(exchange string, p currency.Pair, a asset.Item) (*Bas
 // bids value
 func (b *Base) TotalBidsAmount() (amountCollated, total float64) {
 	fmt.Println("++++++++ debug: bidamount", b.Bids, " len:", len(b.Bids))
-	for x := range b.Bids {
+	// for x := range b.Bids {
+	for x := 0; x < len(b.Bids); x++ {
 		amountCollated += b.Bids[x].Amount
 		total += b.Bids[x].Amount * b.Bids[x].Price
 	}
@@ -194,7 +195,8 @@ func (b *Base) TotalBidsAmount() (amountCollated, total float64) {
 // asks value
 func (b *Base) TotalAsksAmount() (amountCollated, total float64) {
 	fmt.Println("++++++++ debug: askamount:", b.Asks, " len:", len(b.Asks))
-	for y := range b.Asks {
+	// for y := range b.Asks {
+	for y := 0; y < len(b.Asks); y++ {
 		amountCollated += b.Asks[y].Amount
 		total += b.Asks[y].Amount * b.Asks[y].Price
 	}
