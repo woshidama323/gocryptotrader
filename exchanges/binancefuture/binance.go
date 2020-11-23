@@ -35,7 +35,7 @@ const (
 	priceChange       = "/fapi/v1/ticker/24hr"
 	symbolPrice       = "/fapi/v1/ticker/price"
 	bestPrice         = "/fapi/v1/ticker/bookTicker"
-	accountInfo       = "/fapi/v1/account"
+	accountInfo       = "/fapi/v2/account"
 	userAccountStream = "/fapi/v1/listenKey"
 
 	// Authenticated endpoints
