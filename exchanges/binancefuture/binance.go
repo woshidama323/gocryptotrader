@@ -600,15 +600,16 @@ func getOfflineTradeFee(price, amount float64) float64 {
 // getMultiplier retrieves account based taker/maker fees
 func (b *Binance) getMultiplier(isMaker bool) (float64, error) {
 	var multiplier float64
-	account, err := b.GetAccount()
-	if err != nil {
-		return 0, err
-	}
-	if isMaker {
-		multiplier = float64(account.MakerCommission)
-	} else {
-		multiplier = float64(account.TakerCommission)
-	}
+	// account, err := b.GetAccount()
+	// if err != nil {
+	// 	return 0, err
+	// }
+	// if isMaker {
+	// 	multiplier = float64(account.MakerCommission)
+	// } else {
+	// 	multiplier = float64(account.TakerCommission)
+	// }
+	multiplier = 1.0
 	return multiplier, nil
 }
 

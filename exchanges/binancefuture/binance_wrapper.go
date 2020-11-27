@@ -457,19 +457,19 @@ func (b *Binance) UpdateAccountInfo() (account.Holdings, error) {
 
 	var currencyBalance []account.Balance
 	for i := range raw.Balances {
-		freeCurrency, parseErr := strconv.ParseFloat(raw.Balances[i].Free, 64)
+		freeCurrency, parseErr := strconv.ParseFloat(raw.Balances[i].AvailableBalance, 64)
 		if parseErr != nil {
 			return info, parseErr
 		}
 
-		lockedCurrency, parseErr := strconv.ParseFloat(raw.Balances[i].Locked, 64)
+		totalCurrency, parseErr := strconv.ParseFloat(raw.Balances[i].CrossWalletBalance, 64)
 		if parseErr != nil {
 			return info, parseErr
 		}
 
 		currencyBalance = append(currencyBalance, account.Balance{
 			CurrencyName: currency.NewCode(raw.Balances[i].Asset),
-			TotalValue:   freeCurrency + lockedCurrency,
+			TotalValue:   totalCurrency,
 			Hold:         freeCurrency,
 		})
 	}
