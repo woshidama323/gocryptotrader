@@ -375,11 +375,11 @@ type Balance struct {
 // Account holds the account data
 type Account struct {
 
-    FeeTier string `json:"feeTier"`
-    CanTrade string `json:"canTrade"`
-    CanDeposit string `json:"canDeposit"`
-    CanWithdraw string `json:"canWithdraw"`
-    UpdateTime string `json:"updateTime"`
+    FeeTier int `json:"feeTier"`
+    CanTrade bool `json:"canTrade"`
+    CanDeposit bool `json:"canDeposit"`
+    CanWithdraw bool `json:"canWithdraw"`
+    UpdateTime int64 `json:"updateTime"`
     TotalInitialMargin string `json:"totalInitialMargin"`
     TotalMaintMargin string `json:"totalMaintMargin"`
     TotalWalletBalance string `json:"totalWalletBalance"`
