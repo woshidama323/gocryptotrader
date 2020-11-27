@@ -422,7 +422,7 @@ type PositionType struct{
     PositionInitialMargin       string `json:"positionInitialMargin"`
     OpenOrderInitialMargin      string `json:"openOrderInitialMargin"`
     Leverage                    string `json:"leverage"`
-    Isolated                    string `json:"isolated"`
+    Isolated                    bool `json:"isolated"`
     EntryPrice                  string `json:"entryPrice"`
     MaxNotional                 string `json:"maxNotional"`
     PositionSide                string `json:"positionSide"`
