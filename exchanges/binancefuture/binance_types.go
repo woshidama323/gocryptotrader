@@ -351,12 +351,12 @@ type QueryOrderData struct {
 	//===== future =======
 	AvgPrice            string  `json:"avgPrice"`
     ClientOrderId       string  `json:"clientOrderId"`
-    CumQuote            string  `json:"cumQuote"`
-    ExecutedQty         string  `json:"executedQty"`
-    OrderId             int64   `json:"orderId"`
-    OrigQty             string  `json:"origQty"`
+    CummulativeQuoteQty float64  `json:"cumQuote,string"`
+    ExecutedQty         float64  `json:"executedQty,string"`
+    OrderID             int64   `json:"orderId"`
+    OrigQty             float64  `json:"origQty,string"`
     OrigType            string  `json:"origType"`
-    Price               string  `json:"price"`
+    Price               float64  `json:"price,string"`
     ReduceOnly          bool    `json:"reduceOnly"`
     Side                string  `json:"side"`
     PositionSide        string  `json:"positionSide"`
