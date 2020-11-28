@@ -40,7 +40,7 @@ const (
 
 	// Authenticated endpoints
 	newOrderTest = "/fapi/v1/order/test"
-	newOrder     = "/fapi/v1"
+	newOrder     = "/fapi/v1/order"
 	cancelOrder  = "/fapi/v1/order"
 	queryOrder   = "/fapi/v1/order"
 	openOrders   = "/fapi/v1/openOrders"
