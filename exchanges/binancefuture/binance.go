@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -160,25 +161,120 @@ func (b *Binance) GetHistoricalTrades(symbol string, limit int, fromID int64) ([
 	return nil, common.ErrFunctionNotSupported
 }
 
-// GetAggregatedTrades returns aggregated trade activity
-//
-// symbol: string of currency pair
-// limit: Optional. Default 500; max 1000.
-func (b *Binance) GetAggregatedTrades(symbol string, limit int) ([]AggregatedTrade, error) {
-	var resp []AggregatedTrade
-
-	if err := b.CheckLimit(limit); err != nil {
-		return resp, err
-	}
-
+// GetAggregatedTrades returns aggregated trade activity.
+// If more than one hour of data is requested or asked limit is not supported by exchange
+// then the trades are collected with multiple backend requests.
+// https://binance-docs.github.io/apidocs/spot/en/#compressed-aggregate-trades-list
+func (b *Binance) GetAggregatedTrades(arg *AggregatedTradeRequestParams) ([]AggregatedTrade, error) {
 	params := url.Values{}
-	params.Set("symbol", strings.ToUpper(symbol))
-	if limit > 0 {
-		params.Set("limit", strconv.Itoa(limit))
+	params.Set("symbol", arg.Symbol)
+	// if the user request is directly not supported by the exchange, we might be able to fulfill it
+	// by merging results from multiple API requests
+	needBatch := false
+	if arg.Limit > 0 {
+		if arg.Limit > 1000 {
+			// remote call doesn't support higher limits
+			needBatch = true
+		} else {
+			params.Set("limit", strconv.Itoa(arg.Limit))
+		}
+	}
+	if arg.FromID != 0 {
+		params.Set("fromId", strconv.FormatInt(arg.FromID, 10))
+	}
+	if !arg.StartTime.IsZero() {
+		params.Set("startTime", timeString(arg.StartTime))
+	}
+	if !arg.EndTime.IsZero() {
+		params.Set("endTime", timeString(arg.EndTime))
 	}
 
+	// startTime and endTime are set and time between startTime and endTime is more than 1 hour
+	needBatch = needBatch || (!arg.StartTime.IsZero() && !arg.EndTime.IsZero() && arg.EndTime.Sub(arg.StartTime) > time.Hour)
+	// Fall back to batch requests, if possible and necessary
+	if needBatch {
+		// fromId xor start time must be set
+		canBatch := arg.FromID == 0 != arg.StartTime.IsZero()
+		if canBatch {
+			// Split the request into multiple
+			return b.batchAggregateTrades(arg, params)
+		}
+
+		// Can't handle this request locally or remotely
+		// We would receive {"code":-1128,"msg":"Combination of optional parameters invalid."}
+		return nil, errors.New("please set StartTime or FromId, but not both")
+	}
+
+	var resp []AggregatedTrade
 	path := b.API.Endpoints.URL + aggregatedTrades + "?" + params.Encode()
 	return resp, b.SendHTTPRequest(path, limitDefault, &resp)
+}
+
+// batchAggregateTrades fetches trades in multiple requests
+// first phase, hourly requests until the first trade (or end time) is reached
+// second phase, limit requests from previous trade until end time (or limit) is reached
+func (b *Binance) batchAggregateTrades(arg *AggregatedTradeRequestParams, params url.Values) ([]AggregatedTrade, error) {
+	var resp []AggregatedTrade
+	// prepare first request with only first hour and max limit
+	if arg.Limit == 0 || arg.Limit > 1000 {
+		// Extend from the default of 500
+		params.Set("limit", "1000")
+	}
+
+	var fromID int64
+	if arg.FromID > 0 {
+		fromID = arg.FromID
+	} else {
+		for start := arg.StartTime; len(resp) == 0; start = start.Add(time.Hour) {
+			if !arg.EndTime.IsZero() && !start.Before(arg.EndTime) {
+				// All requests returned empty
+				return nil, nil
+			}
+			params.Set("startTime", timeString(start))
+			params.Set("endTime", timeString(start.Add(time.Hour)))
+			path := b.API.Endpoints.URL + aggregatedTrades + "?" + params.Encode()
+			err := b.SendHTTPRequest(path, limitDefault, &resp)
+			if err != nil {
+				log.Warn(log.ExchangeSys, err.Error())
+				return resp, err
+			}
+		}
+		fromID = resp[len(resp)-1].ATradeID
+	}
+
+	// other requests follow from the last aggregate trade id and have no time window
+	params.Del("startTime")
+	params.Del("endTime")
+	// while we haven't reached the limit
+	for ; arg.Limit == 0 || len(resp) < arg.Limit; fromID = resp[len(resp)-1].ATradeID {
+		// Keep requesting new data after last retrieved trade
+		params.Set("fromId", strconv.FormatInt(fromID, 10))
+		path := b.API.Endpoints.URL + aggregatedTrades + "?" + params.Encode()
+		var additionalTrades []AggregatedTrade
+		err := b.SendHTTPRequest(path, limitDefault, &additionalTrades)
+		if err != nil {
+			return resp, err
+		}
+		lastIndex := len(additionalTrades)
+		if !arg.EndTime.IsZero() {
+			// get index for truncating to end time
+			lastIndex = sort.Search(len(additionalTrades), func(i int) bool {
+				return arg.EndTime.Before(additionalTrades[i].TimeStamp)
+			})
+		}
+		// don't include the first as the request was inclusive from last ATradeID
+		resp = append(resp, additionalTrades[1:lastIndex]...)
+		// If only the starting trade is returned or if we received trades after end time
+		if len(additionalTrades) == 1 || lastIndex < len(additionalTrades) {
+			// We found the end
+			break
+		}
+	}
+	// Truncate if necessary
+	if arg.Limit > 0 && len(resp) > arg.Limit {
+		resp = resp[:arg.Limit]
+	}
+	return resp, nil
 }
 
 // GetSpotKline returns kline data
@@ -189,7 +285,7 @@ func (b *Binance) GetAggregatedTrades(symbol string, limit int) ([]AggregatedTra
 // interval: the interval time for the data
 // startTime: startTime filter for kline data
 // endTime: endTime filter for the kline data
-func (b *Binance) GetSpotKline(arg KlinesRequestParams) ([]CandleStick, error) {
+func (b *Binance) GetSpotKline(arg *KlinesRequestParams) ([]CandleStick, error) {
 	var resp interface{}
 	var klineData []CandleStick
 
@@ -199,11 +295,11 @@ func (b *Binance) GetSpotKline(arg KlinesRequestParams) ([]CandleStick, error) {
 	if arg.Limit != 0 {
 		params.Set("limit", strconv.Itoa(arg.Limit))
 	}
-	if arg.StartTime != 0 {
-		params.Set("startTime", strconv.FormatInt(arg.StartTime, 10))
+	if !arg.StartTime.IsZero() {
+		params.Set("startTime", timeString(arg.StartTime))
 	}
-	if arg.EndTime != 0 {
-		params.Set("endTime", strconv.FormatInt(arg.EndTime, 10))
+	if !arg.EndTime.IsZero() {
+		params.Set("endTime", timeString(arg.EndTime))
 	}
 
 	path := fmt.Sprintf("%s%s?%s", b.API.Endpoints.URL, candleStick, params.Encode())
@@ -649,6 +745,48 @@ func (b *Binance) WithdrawCrypto(asset, address, addressTag, name, amount string
 	}
 
 	return resp.ID, nil
+}
+
+// WithdrawStatus gets the status of recent withdrawals
+// status `param` used as string to prevent default value 0 (for int) interpreting as EmailSent status
+func (b *Binance) WithdrawStatus(c currency.Code, status string, startTime, endTime int64) ([]WithdrawStatusResponse, error) {
+	var response struct {
+		Success      bool                     `json:"success"`
+		WithdrawList []WithdrawStatusResponse `json:"withdrawList"`
+	}
+
+	path := b.API.Endpoints.URL + withdrawalHistory
+	params := url.Values{}
+	params.Set("asset", c.String())
+
+	if status != "" {
+		i, err := strconv.Atoi(status)
+		if err != nil {
+			return response.WithdrawList, fmt.Errorf("wrong param (status): %s. Error: %v", status, err)
+		}
+
+		switch i {
+		case EmailSent, Cancelled, AwaitingApproval, Rejected, Processing, Failure, Completed:
+		default:
+			return response.WithdrawList, fmt.Errorf("wrong param (status): %s", status)
+		}
+
+		params.Set("status", status)
+	}
+
+	if startTime > 0 {
+		params.Set("startTime", strconv.FormatInt(startTime, 10))
+	}
+
+	if endTime > 0 {
+		params.Set("endTime", strconv.FormatInt(endTime, 10))
+	}
+
+	if err := b.SendAuthHTTPRequest(http.MethodGet, path, params, request.Unset, &response); err != nil {
+		return response.WithdrawList, err
+	}
+
+	return response.WithdrawList, nil
 }
 
 // GetDepositAddressForCurrency retrieves the wallet address for a given currency

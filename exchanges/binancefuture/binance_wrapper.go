@@ -503,6 +503,29 @@ func (b *Binance) GetFundingHistory() ([]exchange.FundHistory, error) {
 	return nil, common.ErrFunctionNotSupported
 }
 
+// GetWithdrawalsHistory returns previous withdrawals data
+func (b *Binance) GetWithdrawalsHistory(c currency.Code) (resp []exchange.WithdrawalHistory, err error) {
+	w, err := b.WithdrawStatus(c, "", 0, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range w {
+		resp = append(resp, exchange.WithdrawalHistory{
+			Status:          strconv.FormatInt(w[i].Status, 10),
+			TransferID:      w[i].ID,
+			Currency:        w[i].Asset,
+			Amount:          w[i].Amount,
+			Fee:             w[i].TransactionFee,
+			CryptoToAddress: w[i].Address,
+			CryptoTxID:      w[i].TxID,
+			Timestamp:       time.Unix(w[i].ApplyTime/1000, 0),
+		})
+	}
+
+	return resp, nil
+}
+
 // GetRecentTrades returns the most recent trades for a currency and asset
 func (b *Binance) GetRecentTrades(p currency.Pair, assetType asset.Item) ([]trade.Data, error) {
 	var err error
@@ -524,7 +547,7 @@ func (b *Binance) GetRecentTrades(p currency.Pair, assetType asset.Item) ([]trad
 			AssetType:    assetType,
 			Price:        tradeData[i].Price,
 			Amount:       tradeData[i].Quantity,
-			Timestamp:    time.Unix(0, tradeData[i].Time*int64(time.Millisecond)),
+			Timestamp:    tradeData[i].Time,
 		})
 	}
 	if b.IsSaveTradeDataEnabled() {
@@ -539,8 +562,40 @@ func (b *Binance) GetRecentTrades(p currency.Pair, assetType asset.Item) ([]trad
 }
 
 // GetHistoricTrades returns historic trade data within the timeframe provided
-func (b *Binance) GetHistoricTrades(_ currency.Pair, _ asset.Item, _, _ time.Time) ([]trade.Data, error) {
-	return nil, common.ErrFunctionNotSupported
+func (b *Binance) GetHistoricTrades(p currency.Pair, a asset.Item, from, to time.Time) ([]trade.Data, error) {
+	p, err := b.FormatExchangeCurrency(p, a)
+	if err != nil {
+		return nil, err
+	}
+	req := AggregatedTradeRequestParams{
+		Symbol:    p.String(),
+		StartTime: from,
+		EndTime:   to,
+	}
+	trades, err := b.GetAggregatedTrades(&req)
+	if err != nil {
+		return nil, err
+	}
+	var result []trade.Data
+	exName := b.GetName()
+	for i := range trades {
+		t := trades[i].toTradeData(p, exName, a)
+		result = append(result, *t)
+	}
+	return result, nil
+}
+
+func (a *AggregatedTrade) toTradeData(p currency.Pair, exchange string, aType asset.Item) *trade.Data {
+	return &trade.Data{
+		CurrencyPair: p,
+		TID:          strconv.FormatInt(a.ATradeID, 10),
+		Amount:       a.Quantity,
+		Exchange:     exchange,
+		Price:        a.Price,
+		Timestamp:    a.TimeStamp,
+		AssetType:    aType,
+		Side:         order.AnySide,
+	}
 }
 
 // SubmitOrder submits a new order
@@ -637,6 +692,11 @@ func (b *Binance) CancelOrder(o *order.Cancel) error {
 	return err
 }
 
+// CancelBatchOrders cancels an orders by their corresponding ID numbers
+func (b *Binance) CancelBatchOrders(o []order.Cancel) (order.CancelBatchResponse, error) {
+	return order.CancelBatchResponse{}, common.ErrNotYetImplemented
+}
+
 // CancelAllOrders cancels all orders associated with a currency pair
 func (b *Binance) CancelAllOrders(_ *order.Cancel) (order.CancelAllResponse, error) {
 	cancelAllOrdersResponse := order.CancelAllResponse{
@@ -686,7 +746,7 @@ func (b *Binance) GetOrderInfo(orderID string, pair currency.Pair, assetType ass
 		return
 	}
 
-	orderCloseDate, err := convert.TimeFromUnixTimestampFloat(float64(resp.UpdateTime))
+	orderCloseDate, err := convert.TimeFromUnixTimestampFloat(resp.UpdateTime)
 	if err != nil {
 		return
 	}
@@ -916,8 +976,8 @@ func (b *Binance) GetHistoricCandles(pair currency.Pair, a asset.Item, start, en
 	req := KlinesRequestParams{
 		Interval:  b.FormatExchangeKlineInterval(interval),
 		Symbol:    fpair.String(),
-		StartTime: start.Unix() * 1000,
-		EndTime:   end.Unix() * 1000,
+		StartTime: start,
+		EndTime:   end,
 		Limit:     int(b.Features.Enabled.Kline.ResultLimit),
 	}
 
@@ -928,7 +988,7 @@ func (b *Binance) GetHistoricCandles(pair currency.Pair, a asset.Item, start, en
 		Interval: interval,
 	}
 
-	candles, err := b.GetSpotKline(req)
+	candles, err := b.GetSpotKline(&req)
 	if err != nil {
 		return kline.Item{}, err
 	}
@@ -971,12 +1031,12 @@ func (b *Binance) GetHistoricCandlesExtended(pair currency.Pair, a asset.Item, s
 		req := KlinesRequestParams{
 			Interval:  b.FormatExchangeKlineInterval(interval),
 			Symbol:    formattedPair.String(),
-			StartTime: dates[x].Start.UTC().Unix() * 1000,
-			EndTime:   dates[x].End.UTC().Unix() * 1000,
+			StartTime: dates[x].Start,
+			EndTime:   dates[x].End,
 			Limit:     int(b.Features.Enabled.Kline.ResultLimit),
 		}
 
-		candles, err := b.GetSpotKline(req)
+		candles, err := b.GetSpotKline(&req)
 		if err != nil {
 			return kline.Item{}, err
 		}
