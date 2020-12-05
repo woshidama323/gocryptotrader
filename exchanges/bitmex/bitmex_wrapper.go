@@ -423,6 +423,11 @@ func (b *Bitmex) GetFundingHistory() ([]exchange.FundHistory, error) {
 	return nil, common.ErrNotYetImplemented
 }
 
+// GetWithdrawalsHistory returns previous withdrawals data
+func (b *Bitmex) GetWithdrawalsHistory(c currency.Code) (resp []exchange.WithdrawalHistory, err error) {
+	return nil, common.ErrNotYetImplemented
+}
+
 // GetRecentTrades returns the most recent trades for a currency and asset
 func (b *Bitmex) GetRecentTrades(p currency.Pair, assetType asset.Item) ([]trade.Data, error) {
 	return b.GetHistoricTrades(p, assetType, time.Now().Add(-time.Hour), time.Now())
@@ -580,6 +585,11 @@ func (b *Bitmex) CancelOrder(o *order.Cancel) error {
 	}
 	_, err := b.CancelOrders(&params)
 	return err
+}
+
+// CancelBatchOrders cancels an orders by their corresponding ID numbers
+func (b *Bitmex) CancelBatchOrders(o []order.Cancel) (order.CancelBatchResponse, error) {
+	return order.CancelBatchResponse{}, common.ErrNotYetImplemented
 }
 
 // CancelAllOrders cancels all orders associated with a currency pair

@@ -438,6 +438,11 @@ func (f *FTX) GetFundingHistory() ([]exchange.FundHistory, error) {
 	return resp, nil
 }
 
+// GetWithdrawalsHistory returns previous withdrawals data
+func (f *FTX) GetWithdrawalsHistory(c currency.Code) (resp []exchange.WithdrawalHistory, err error) {
+	return nil, common.ErrNotYetImplemented
+}
+
 // GetRecentTrades returns the most recent trades for a currency and asset
 func (f *FTX) GetRecentTrades(p currency.Pair, assetType asset.Item) ([]trade.Data, error) {
 	return f.GetHistoricTrades(p, assetType, time.Now().Add(-time.Hour), time.Now())
@@ -599,6 +604,11 @@ func (f *FTX) CancelOrder(o *order.Cancel) error {
 
 	_, err := f.DeleteOrder(o.ID)
 	return err
+}
+
+// CancelBatchOrders cancels an orders by their corresponding ID numbers
+func (f *FTX) CancelBatchOrders(o []order.Cancel) (order.CancelBatchResponse, error) {
+	return order.CancelBatchResponse{}, common.ErrNotYetImplemented
 }
 
 // CancelAllOrders cancels all orders associated with a currency pair

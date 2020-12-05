@@ -426,6 +426,11 @@ func (b *BTCMarkets) GetFundingHistory() ([]exchange.FundHistory, error) {
 	return nil, common.ErrFunctionNotSupported
 }
 
+// GetWithdrawalsHistory returns previous withdrawals data
+func (b *BTCMarkets) GetWithdrawalsHistory(c currency.Code) (resp []exchange.WithdrawalHistory, err error) {
+	return nil, common.ErrNotYetImplemented
+}
+
 // GetRecentTrades returns the most recent trades for a currency and asset
 func (b *BTCMarkets) GetRecentTrades(p currency.Pair, assetType asset.Item) ([]trade.Data, error) {
 	var err error
@@ -527,6 +532,11 @@ func (b *BTCMarkets) CancelOrder(o *order.Cancel) error {
 	return err
 }
 
+// CancelBatchOrders cancels an orders by their corresponding ID numbers
+func (b *BTCMarkets) CancelBatchOrders(o []order.Cancel) (order.CancelBatchResponse, error) {
+	return order.CancelBatchResponse{}, common.ErrNotYetImplemented
+}
+
 // CancelAllOrders cancels all orders associated with a currency pair
 func (b *BTCMarkets) CancelAllOrders(_ *order.Cancel) (order.CancelAllResponse, error) {
 	var resp order.CancelAllResponse
@@ -541,7 +551,7 @@ func (b *BTCMarkets) CancelAllOrders(_ *order.Cancel) (order.CancelAllResponse, 
 	}
 	splitOrders := common.SplitStringSliceByLimit(orderIDs, 20)
 	for z := range splitOrders {
-		tempResp, err := b.CancelBatchOrders(splitOrders[z])
+		tempResp, err := b.CancelBatch(splitOrders[z])
 		if err != nil {
 			return resp, err
 		}

@@ -331,6 +331,11 @@ func (g *Gemini) GetFundingHistory() ([]exchange.FundHistory, error) {
 	return nil, common.ErrFunctionNotSupported
 }
 
+// GetWithdrawalsHistory returns previous withdrawals data
+func (g *Gemini) GetWithdrawalsHistory(c currency.Code) (resp []exchange.WithdrawalHistory, err error) {
+	return nil, common.ErrNotYetImplemented
+}
+
 // GetRecentTrades returns the most recent trades for a currency and asset
 func (g *Gemini) GetRecentTrades(currencyPair currency.Pair, assetType asset.Item) ([]trade.Data, error) {
 	return g.GetHistoricTrades(currencyPair, assetType, time.Time{}, time.Time{})
@@ -452,6 +457,11 @@ func (g *Gemini) CancelOrder(o *order.Cancel) error {
 
 	_, err = g.CancelExistingOrder(orderIDInt)
 	return err
+}
+
+// CancelBatchOrders cancels an orders by their corresponding ID numbers
+func (g *Gemini) CancelBatchOrders(o []order.Cancel) (order.CancelBatchResponse, error) {
+	return order.CancelBatchResponse{}, common.ErrNotYetImplemented
 }
 
 // CancelAllOrders cancels all orders associated with a currency pair

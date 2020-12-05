@@ -248,19 +248,38 @@ func (l *Lbank) UpdateOrderbook(p currency.Pair, assetType asset.Item) (*orderbo
 	if err != nil {
 		return nil, err
 	}
+
 	a, err := l.GetMarketDepths(fpair.String(), "60", "1")
 	if err != nil {
 		return orderBook, err
 	}
 	for i := range a.Asks {
+		price, convErr := strconv.ParseFloat(a.Asks[i][0], 64)
+		if convErr != nil {
+			return orderBook, convErr
+		}
+		amount, convErr := strconv.ParseFloat(a.Asks[i][1], 64)
+		if convErr != nil {
+			return orderBook, convErr
+		}
 		orderBook.Asks = append(orderBook.Asks, orderbook.Item{
-			Price:  a.Asks[i][0],
-			Amount: a.Asks[i][1]})
+			Price:  price,
+			Amount: amount,
+		})
 	}
 	for i := range a.Bids {
+		price, convErr := strconv.ParseFloat(a.Bids[i][0], 64)
+		if convErr != nil {
+			return orderBook, convErr
+		}
+		amount, convErr := strconv.ParseFloat(a.Bids[i][1], 64)
+		if convErr != nil {
+			return orderBook, convErr
+		}
 		orderBook.Bids = append(orderBook.Bids, orderbook.Item{
-			Price:  a.Bids[i][0],
-			Amount: a.Bids[i][1]})
+			Price:  price,
+			Amount: amount,
+		})
 	}
 	orderBook.Pair = p
 	orderBook.ExchangeName = l.Name
@@ -326,6 +345,11 @@ func (l *Lbank) FetchAccountInfo() (account.Holdings, error) {
 // withdrawals
 func (l *Lbank) GetFundingHistory() ([]exchange.FundHistory, error) {
 	return nil, common.ErrFunctionNotSupported
+}
+
+// GetWithdrawalsHistory returns previous withdrawals data
+func (l *Lbank) GetWithdrawalsHistory(c currency.Code) (resp []exchange.WithdrawalHistory, err error) {
+	return nil, common.ErrNotYetImplemented
 }
 
 // GetRecentTrades returns the most recent trades for a currency and asset
@@ -445,6 +469,11 @@ func (l *Lbank) CancelOrder(o *order.Cancel) error {
 	}
 	_, err = l.RemoveOrder(fpair.String(), o.ID)
 	return err
+}
+
+// CancelBatchOrders cancels an orders by their corresponding ID numbers
+func (l *Lbank) CancelBatchOrders(o []order.Cancel) (order.CancelBatchResponse, error) {
+	return order.CancelBatchResponse{}, common.ErrNotYetImplemented
 }
 
 // CancelAllOrders cancels all orders associated with a currency pair

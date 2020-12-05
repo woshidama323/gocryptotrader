@@ -484,6 +484,11 @@ func (b *Bitfinex) GetFundingHistory() ([]exchange.FundHistory, error) {
 	return nil, common.ErrFunctionNotSupported
 }
 
+// GetWithdrawalsHistory returns previous withdrawals data
+func (b *Bitfinex) GetWithdrawalsHistory(c currency.Code) (resp []exchange.WithdrawalHistory, err error) {
+	return nil, common.ErrNotYetImplemented
+}
+
 // GetRecentTrades returns the most recent trades for a currency and asset
 func (b *Bitfinex) GetRecentTrades(p currency.Pair, assetType asset.Item) ([]trade.Data, error) {
 	return b.GetHistoricTrades(p, assetType, time.Now().Add(-time.Hour), time.Now())
@@ -648,6 +653,11 @@ func (b *Bitfinex) CancelOrder(o *order.Cancel) error {
 		_, err = b.CancelExistingOrder(orderIDInt)
 	}
 	return err
+}
+
+// CancelBatchOrders cancels an orders by their corresponding ID numbers
+func (b *Bitfinex) CancelBatchOrders(o []order.Cancel) (order.CancelBatchResponse, error) {
+	return order.CancelBatchResponse{}, common.ErrNotYetImplemented
 }
 
 // CancelAllOrders cancels all orders associated with a currency pair

@@ -17,7 +17,7 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/golang/protobuf/ptypes"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
-	grpcruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/common/crypto"
 	"github.com/thrasher-corp/gocryptotrader/common/file"
@@ -67,6 +67,7 @@ var (
 // RPCServer struct
 type RPCServer struct {
 	*Engine
+	gctrpc.UnimplementedGoCryptoTraderServer
 }
 
 func (bot *Engine) authenticateClient(ctx context.Context) (context.Context, error) {
@@ -126,7 +127,7 @@ func StartRPCServer(engine *Engine) {
 		grpc.UnaryInterceptor(grpcauth.UnaryServerInterceptor(engine.authenticateClient)),
 	}
 	server := grpc.NewServer(opts...)
-	s := RPCServer{engine}
+	s := RPCServer{Engine: engine}
 	gctrpc.RegisterGoCryptoTraderServer(server, &s)
 
 	go func() {
@@ -154,7 +155,7 @@ func (s *RPCServer) StartRPCRESTProxy() {
 		return
 	}
 
-	mux := grpcruntime.NewServeMux()
+	mux := runtime.NewServeMux()
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(auth.BasicAuth{
 			Username: s.Config.RemoteControl.Username,
@@ -506,11 +507,30 @@ func (s *RPCServer) GetAccountInfo(_ context.Context, r *gctrpc.GetAccountInfoRe
 		return nil, err
 	}
 
+	return createAccountInfoRequest(resp)
+}
+
+// UpdateAccountInfo forces an update of the account info
+func (s *RPCServer) UpdateAccountInfo(ctx context.Context, r *gctrpc.GetAccountInfoRequest) (*gctrpc.GetAccountInfoResponse, error) {
+	exch := s.GetExchangeByName(r.Exchange)
+	if exch == nil {
+		return nil, errExchangeNotLoaded
+	}
+
+	resp, err := exch.UpdateAccountInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	return createAccountInfoRequest(resp)
+}
+
+func createAccountInfoRequest(h account.Holdings) (*gctrpc.GetAccountInfoResponse, error) {
 	var accounts []*gctrpc.Account
-	for x := range resp.Accounts {
+	for x := range h.Accounts {
 		var a gctrpc.Account
-		a.Id = resp.Accounts[x].ID
-		for _, y := range resp.Accounts[x].Currencies {
+		a.Id = h.Accounts[x].ID
+		for _, y := range h.Accounts[x].Currencies {
 			a.Currencies = append(a.Currencies, &gctrpc.AccountCurrencyInfo{
 				Currency:   y.CurrencyName.String(),
 				Hold:       y.Hold,
@@ -520,7 +540,7 @@ func (s *RPCServer) GetAccountInfo(_ context.Context, r *gctrpc.GetAccountInfoRe
 		accounts = append(accounts, &a)
 	}
 
-	return &gctrpc.GetAccountInfoResponse{Exchange: r.Exchange, Accounts: accounts}, nil
+	return &gctrpc.GetAccountInfoResponse{Exchange: h.Exchange, Accounts: accounts}, nil
 }
 
 // GetAccountInfoStream streams an account balance for a specific exchange
@@ -1019,9 +1039,65 @@ func (s *RPCServer) CancelOrder(_ context.Context, r *gctrpc.CancelOrderRequest)
 		Data: fmt.Sprintf("order %s cancelled", r.OrderId)}, nil
 }
 
+// CancelBatchOrders cancels an orders specified by exchange, currency pair and asset type
+func (s *RPCServer) CancelBatchOrders(_ context.Context, r *gctrpc.CancelBatchOrdersRequest) (*gctrpc.CancelBatchOrdersResponse, error) {
+	exch := s.GetExchangeByName(r.Exchange)
+	if exch == nil {
+		return nil, errExchangeNotLoaded
+	}
+
+	pair, err := currency.NewPairFromStrings(r.Pair.Base, r.Pair.Quote)
+	if err != nil {
+		return nil, err
+	}
+
+	assetType, err := asset.New(r.AssetType)
+	if err != nil {
+		return nil, err
+	}
+
+	status := make(map[string]string)
+	var request []order.Cancel
+	orders := strings.Split(r.OrdersId, ",")
+	for _, orderID := range orders {
+		status[orderID] = order.Cancelled.String()
+		request = append(request, order.Cancel{
+			AccountID:     r.AccountId,
+			ID:            orderID,
+			Side:          order.Side(r.Side),
+			WalletAddress: r.WalletAddress,
+			Pair:          pair,
+			AssetType:     assetType,
+		})
+	}
+
+	_, err = exch.CancelBatchOrders(request)
+	if err != nil {
+		return nil, err
+	}
+
+	return &gctrpc.CancelBatchOrdersResponse{
+		Orders: []*gctrpc.CancelBatchOrdersResponse_Orders{{
+			OrderStatus: status,
+		}},
+	}, nil
+}
+
 // CancelAllOrders cancels all orders, filterable by exchange
 func (s *RPCServer) CancelAllOrders(_ context.Context, r *gctrpc.CancelAllOrdersRequest) (*gctrpc.CancelAllOrdersResponse, error) {
-	return &gctrpc.CancelAllOrdersResponse{}, common.ErrNotYetImplemented
+	exch := s.GetExchangeByName(r.Exchange)
+	if exch == nil {
+		return &gctrpc.CancelAllOrdersResponse{}, errExchangeNotLoaded
+	}
+
+	resp, err := exch.CancelAllOrders(nil)
+	if err != nil {
+		return &gctrpc.CancelAllOrdersResponse{}, err
+	}
+
+	return &gctrpc.CancelAllOrdersResponse{
+		Count: resp.Count, // count of deleted orders
+	}, nil
 }
 
 // GetEvents returns the stored events list
@@ -1227,6 +1303,20 @@ func (s *RPCServer) WithdrawalEventByID(_ context.Context, r *gctrpc.WithdrawalE
 // WithdrawalEventsByExchange returns previous withdrawal request details by exchange
 func (s *RPCServer) WithdrawalEventsByExchange(_ context.Context, r *gctrpc.WithdrawalEventsByExchangeRequest) (*gctrpc.WithdrawalEventsByExchangeResponse, error) {
 	if !s.Config.Database.Enabled {
+		if r.Id == "" {
+			exch := s.GetExchangeByName(r.Exchange)
+			if exch == nil {
+				return nil, errExchangeNotLoaded
+			}
+
+			c := currency.NewCode(strings.ToUpper(r.Currency))
+			ret, err := exch.GetWithdrawalsHistory(c)
+			if err != nil {
+				return nil, err
+			}
+
+			return parseWithdrawalsHistory(ret, exch.GetName(), int(r.Limit)), nil
+		}
 		return nil, database.ErrDatabaseSupportDisabled
 	}
 	if r.Id == "" {
@@ -2786,18 +2876,20 @@ func (s *RPCServer) GetHistoricTrades(r *gctrpc.GetSavedTradesRequest, stream gc
 	if err != nil {
 		return err
 	}
-
 	resp := &gctrpc.SavedTradesResponse{
 		ExchangeName: r.Exchange,
 		Asset:        r.AssetType,
 		Pair:         r.Pair,
 	}
-	iterateStartTime := UTCStartTime
-	iterateEndTime := iterateStartTime.Add(time.Hour)
-	for iterateStartTime.Before(UTCEndTime) {
+
+	for iterateStartTime := UTCStartTime; iterateStartTime.Before(UTCEndTime); iterateStartTime = iterateStartTime.Add(time.Hour) {
+		iterateEndTime := iterateStartTime.Add(time.Hour)
 		trades, err = exch.GetHistoricTrades(cp, asset.Item(r.AssetType), iterateStartTime, iterateEndTime)
 		if err != nil {
 			return err
+		}
+		if len(trades) == 0 {
+			continue
 		}
 		grpcTrades := &gctrpc.SavedTradesResponse{
 			ExchangeName: r.Exchange,
@@ -2819,8 +2911,6 @@ func (s *RPCServer) GetHistoricTrades(r *gctrpc.GetSavedTradesRequest, stream gc
 		}
 
 		stream.Send(grpcTrades)
-		iterateStartTime = iterateStartTime.Add(time.Hour)
-		iterateEndTime = iterateEndTime.Add(time.Hour)
 	}
 	stream.Send(resp)
 

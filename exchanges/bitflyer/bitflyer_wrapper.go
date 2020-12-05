@@ -304,6 +304,11 @@ func (b *Bitflyer) GetFundingHistory() ([]exchange.FundHistory, error) {
 	return nil, common.ErrFunctionNotSupported
 }
 
+// GetWithdrawalsHistory returns previous withdrawals data
+func (b *Bitflyer) GetWithdrawalsHistory(c currency.Code) (resp []exchange.WithdrawalHistory, err error) {
+	return nil, common.ErrNotYetImplemented
+}
+
 // GetRecentTrades returns recent historic trades
 func (b *Bitflyer) GetRecentTrades(p currency.Pair, assetType asset.Item) ([]trade.Data, error) {
 	var err error
@@ -367,6 +372,11 @@ func (b *Bitflyer) ModifyOrder(action *order.Modify) (string, error) {
 // CancelOrder cancels an order by its corresponding ID number
 func (b *Bitflyer) CancelOrder(_ *order.Cancel) error {
 	return common.ErrNotYetImplemented
+}
+
+// CancelBatchOrders cancels an orders by their corresponding ID numbers
+func (b *Bitflyer) CancelBatchOrders(o []order.Cancel) (order.CancelBatchResponse, error) {
+	return order.CancelBatchResponse{}, common.ErrNotYetImplemented
 }
 
 // CancelAllOrders cancels all orders associated with a currency pair

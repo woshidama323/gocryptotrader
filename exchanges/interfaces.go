@@ -53,10 +53,12 @@ type IBotExchange interface {
 	SubmitOrder(s *order.Submit) (order.SubmitResponse, error)
 	ModifyOrder(action *order.Modify) (string, error)
 	CancelOrder(o *order.Cancel) error
+	CancelBatchOrders(o []order.Cancel) (order.CancelBatchResponse, error)
 	CancelAllOrders(orders *order.Cancel) (order.CancelAllResponse, error)
 	GetOrderInfo(orderID string, pair currency.Pair, assetType asset.Item) (order.Detail, error)
 	GetDepositAddress(cryptocurrency currency.Code, accountID string) (string, error)
 	GetOrderHistory(getOrdersRequest *order.GetOrdersRequest) ([]order.Detail, error)
+	GetWithdrawalsHistory(code currency.Code) ([]WithdrawalHistory, error)
 	GetActiveOrders(getOrdersRequest *order.GetOrdersRequest) ([]order.Detail, error)
 	WithdrawCryptocurrencyFunds(withdrawRequest *withdraw.Request) (*withdraw.ExchangeResponse, error)
 	WithdrawFiatFunds(withdrawRequest *withdraw.Request) (*withdraw.ExchangeResponse, error)

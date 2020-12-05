@@ -94,7 +94,6 @@ func (p *Processor) Run(wg *sync.WaitGroup) {
 		atomic.CompareAndSwapInt32(&p.started, 1, 0)
 	}()
 	p.mutex.Lock()
-	//每隔15s会存buffer中的数据到数据库中
 	ticker := time.NewTicker(p.bufferProcessorInterval)
 	p.mutex.Unlock()
 	for {

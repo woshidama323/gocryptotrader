@@ -395,6 +395,11 @@ func (z *ZB) GetFundingHistory() ([]exchange.FundHistory, error) {
 	return nil, common.ErrFunctionNotSupported
 }
 
+// GetWithdrawalsHistory returns previous withdrawals data
+func (z *ZB) GetWithdrawalsHistory(c currency.Code) (resp []exchange.WithdrawalHistory, err error) {
+	return nil, common.ErrNotYetImplemented
+}
+
 // GetRecentTrades returns the most recent trades for a currency and asset
 func (z *ZB) GetRecentTrades(p currency.Pair, assetType asset.Item) ([]trade.Data, error) {
 	var err error
@@ -529,6 +534,11 @@ func (z *ZB) CancelOrder(o *order.Cancel) error {
 		return err
 	}
 	return z.CancelExistingOrder(orderIDInt, fpair.String())
+}
+
+// CancelBatchOrders cancels an orders by their corresponding ID numbers
+func (z *ZB) CancelBatchOrders(o []order.Cancel) (order.CancelBatchResponse, error) {
+	return order.CancelBatchResponse{}, common.ErrNotYetImplemented
 }
 
 // CancelAllOrders cancels all orders associated with a currency pair

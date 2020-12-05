@@ -95,7 +95,7 @@ func CleanRPCTest(t *testing.T, engerino *Engine) {
 func TestGetSavedTrades(t *testing.T) {
 	engerino := RPCTestSetup(t)
 	defer CleanRPCTest(t, engerino)
-	s := RPCServer{engerino}
+	s := RPCServer{Engine: engerino}
 	_, err := s.GetSavedTrades(context.Background(), &gctrpc.GetSavedTradesRequest{})
 	if err == nil {
 		t.Fatal(unexpectedLackOfError)
@@ -172,7 +172,7 @@ func TestGetSavedTrades(t *testing.T) {
 func TestConvertTradesToCandles(t *testing.T) {
 	engerino := RPCTestSetup(t)
 	defer CleanRPCTest(t, engerino)
-	s := RPCServer{engerino}
+	s := RPCServer{Engine: engerino}
 	// bad param test
 	_, err := s.ConvertTradesToCandles(context.Background(), &gctrpc.ConvertTradesToCandlesRequest{})
 	if err == nil {
@@ -325,7 +325,7 @@ func TestConvertTradesToCandles(t *testing.T) {
 func TestGetHistoricCandles(t *testing.T) {
 	engerino := RPCTestSetup(t)
 	defer CleanRPCTest(t, engerino)
-	s := RPCServer{engerino}
+	s := RPCServer{Engine: engerino}
 	// error checks
 	_, err := s.GetHistoricCandles(context.Background(), &gctrpc.GetHistoricCandlesRequest{
 		Exchange: "",
@@ -453,7 +453,7 @@ func TestGetHistoricCandles(t *testing.T) {
 func TestFindMissingSavedTradeIntervals(t *testing.T) {
 	engerino := RPCTestSetup(t)
 	defer CleanRPCTest(t, engerino)
-	s := RPCServer{engerino}
+	s := RPCServer{Engine: engerino}
 	// bad request checks
 	_, err := s.FindMissingSavedTradeIntervals(context.Background(), &gctrpc.FindMissingTradePeriodsRequest{})
 	if err == nil {
@@ -555,7 +555,7 @@ func TestFindMissingSavedTradeIntervals(t *testing.T) {
 func TestFindMissingSavedCandleIntervals(t *testing.T) {
 	engerino := RPCTestSetup(t)
 	defer CleanRPCTest(t, engerino)
-	s := RPCServer{engerino}
+	s := RPCServer{Engine: engerino}
 	// bad request checks
 	_, err := s.FindMissingSavedCandleIntervals(context.Background(), &gctrpc.FindMissingCandlePeriodsRequest{})
 	if err == nil {
@@ -668,7 +668,7 @@ func TestFindMissingSavedCandleIntervals(t *testing.T) {
 func TestSetExchangeTradeProcessing(t *testing.T) {
 	engerino := RPCTestSetup(t)
 	defer CleanRPCTest(t, engerino)
-	s := RPCServer{engerino}
+	s := RPCServer{Engine: engerino}
 	_, err := s.SetExchangeTradeProcessing(context.Background(), &gctrpc.SetExchangeTradeProcessingRequest{Exchange: testExchange, Status: true})
 	if err != nil {
 		t.Error(err)
@@ -695,7 +695,7 @@ func TestSetExchangeTradeProcessing(t *testing.T) {
 func TestGetRecentTrades(t *testing.T) {
 	engerino := RPCTestSetup(t)
 	defer CleanRPCTest(t, engerino)
-	s := RPCServer{engerino}
+	s := RPCServer{Engine: engerino}
 	_, err := s.GetRecentTrades(context.Background(), &gctrpc.GetSavedTradesRequest{})
 	if err == nil {
 		t.Error(unexpectedLackOfError)
@@ -739,7 +739,7 @@ func TestGetRecentTrades(t *testing.T) {
 func TestGetHistoricTrades(t *testing.T) {
 	engerino := RPCTestSetup(t)
 	defer CleanRPCTest(t, engerino)
-	s := RPCServer{engerino}
+	s := RPCServer{Engine: engerino}
 	err := s.GetHistoricTrades(&gctrpc.GetSavedTradesRequest{}, nil)
 	if err == nil {
 		t.Error(unexpectedLackOfError)
@@ -783,5 +783,38 @@ func TestGetHistoricTrades(t *testing.T) {
 	}
 	if err != common.ErrFunctionNotSupported {
 		t.Error(err)
+	}
+}
+
+func TestGetAccountInfo(t *testing.T) {
+	bot := SetupTestHelpers(t)
+	s := RPCServer{Engine: bot}
+
+	r, err := s.GetAccountInfo(context.Background(), &gctrpc.GetAccountInfoRequest{Exchange: fakePassExchange})
+	if err != nil {
+		t.Fatalf("TestGetAccountInfo: Failed to get account info: %s", err)
+	}
+
+	if r.Accounts[0].Currencies[0].TotalValue != 10 {
+		t.Fatal("TestGetAccountInfo: Unexpected value of the 'TotalValue'")
+	}
+}
+
+func TestUpdateAccountInfo(t *testing.T) {
+	bot := SetupTestHelpers(t)
+	s := RPCServer{Engine: bot}
+
+	getResponse, err := s.GetAccountInfo(context.Background(), &gctrpc.GetAccountInfoRequest{Exchange: fakePassExchange})
+	if err != nil {
+		t.Fatalf("TestGetAccountInfo: Failed to get account info: %s", err)
+	}
+
+	updateResponse, err := s.UpdateAccountInfo(context.Background(), &gctrpc.GetAccountInfoRequest{Exchange: fakePassExchange})
+	if err != nil {
+		t.Fatalf("TestGetAccountInfo: Failed to update account info: %s", err)
+	}
+
+	if getResponse.Accounts[0].Currencies[0].TotalValue == updateResponse.Accounts[0].Currencies[0].TotalValue {
+		t.Fatalf("TestGetAccountInfo: Unexpected value of the 'TotalValue'")
 	}
 }

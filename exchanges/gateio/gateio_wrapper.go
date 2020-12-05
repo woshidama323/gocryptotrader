@@ -417,6 +417,11 @@ func (g *Gateio) GetFundingHistory() ([]exchange.FundHistory, error) {
 	return nil, common.ErrFunctionNotSupported
 }
 
+// GetWithdrawalsHistory returns previous withdrawals data
+func (g *Gateio) GetWithdrawalsHistory(c currency.Code) (resp []exchange.WithdrawalHistory, err error) {
+	return nil, common.ErrNotYetImplemented
+}
+
 // GetRecentTrades returns the most recent trades for a currency and asset
 func (g *Gateio) GetRecentTrades(p currency.Pair, assetType asset.Item) ([]trade.Data, error) {
 	var err error
@@ -528,6 +533,11 @@ func (g *Gateio) CancelOrder(o *order.Cancel) error {
 
 	_, err = g.CancelExistingOrder(orderIDInt, fpair.String())
 	return err
+}
+
+// CancelBatchOrders cancels an orders by their corresponding ID numbers
+func (g *Gateio) CancelBatchOrders(o []order.Cancel) (order.CancelBatchResponse, error) {
+	return order.CancelBatchResponse{}, common.ErrNotYetImplemented
 }
 
 // CancelAllOrders cancels all orders associated with a currency pair

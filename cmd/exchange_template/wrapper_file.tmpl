@@ -324,6 +324,11 @@ func ({{.Variable}} *{{.CapitalName}}) GetFundingHistory() ([]exchange.FundHisto
 	return nil, common.ErrNotYetImplemented
 }
 
+// GetWithdrawalsHistory returns previous withdrawals data
+func ({{.Variable}} *{{.CapitalName}}) GetWithdrawalsHistory(c currency.Code) (resp []exchange.WithdrawalHistory, err error) {
+	return nil, common.ErrNotYetImplemented
+}
+
 // GetRecentTrades returns the most recent trades for a currency and asset
 func ({{.Variable}} *{{.CapitalName}}) GetRecentTrades(p currency.Pair, assetType asset.Item) ([]trade.Data, error) {
 	return nil, common.ErrNotYetImplemented
@@ -358,6 +363,11 @@ func ({{.Variable}} *{{.CapitalName}}) CancelOrder(ord *order.Cancel) error {
 	//	 return err
 	// }
 	return common.ErrNotYetImplemented
+}
+
+// CancelBatchOrders cancels orders by their corresponding ID numbers
+func ({{.Variable}} *{{.CapitalName}}) CancelBatchOrders(orders []order.Cancel) (order.CancelBatchResponse, error) {
+    return order.CancelBatchResponse{}, common.ErrNotYetImplemented
 }
 
 // CancelAllOrders cancels all orders associated with a currency pair
