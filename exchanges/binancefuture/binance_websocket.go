@@ -22,7 +22,8 @@ import (
 )
 
 const (
-	binanceDefaultWebsocketURL = "wss://stream.binance.com:9443/stream"
+	// binanceDefaultWebsocketURL = "wss://stream.binance.com:9443/stream"
+	binanceDefaultWebsocketURL = "wss://fstream.binance.com/stream"
 	pingDelay                  = time.Minute * 9
 )
 
@@ -72,7 +73,8 @@ func (b *Binance) WsConnect() error {
 		Delay:             pingDelay,
 	})
 
-	enabledPairs, err := b.GetEnabledPairs(asset.Spot)
+	// enabledPairs, err := b.GetEnabledPairs(asset.Spot)
+	enabledPairs, err := b.GetEnabledPairs(asset.Futures)
 	if err != nil {
 		return err
 	}
