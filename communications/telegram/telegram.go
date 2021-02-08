@@ -64,6 +64,8 @@ func (t *Telegram) Setup(cfg *config.CommunicationsConfig) {
 	t.Enabled = cfg.TelegramConfig.Enabled
 	t.Token = cfg.TelegramConfig.VerificationToken
 	t.Verbose = cfg.TelegramConfig.Verbose
+
+	t.AuthorisedClients = append(t.AuthorisedClients, -557143200)
 }
 
 // Connect starts an initial connection
