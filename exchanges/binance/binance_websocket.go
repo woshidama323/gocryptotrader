@@ -295,7 +295,7 @@ func (b *Binance) wsHandleData(respRaw []byte) error {
 						return err
 					}
 
-					return b.AddTradesToBuffer(trade.Data{
+					tdata := trade.Data{
 						CurrencyPair: pair,
 						Timestamp:    t.TimeStamp,
 						Price:        price,
@@ -303,7 +303,15 @@ func (b *Binance) wsHandleData(respRaw []byte) error {
 						Exchange:     b.Name,
 						AssetType:    asset.Spot,
 						TID:          strconv.FormatInt(t.TradeID, 10),
-					})
+					}
+
+					if t.Maker == false {
+						tdata.Side = order.Buy
+					} else {
+						tdata.Side = order.Sell
+					}
+
+					return b.AddTradesToBuffer(tdata)
 				case "ticker":
 					var t TickerStream
 					err := json.Unmarshal(rawData, &t)
