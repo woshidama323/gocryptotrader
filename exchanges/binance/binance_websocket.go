@@ -864,6 +864,7 @@ buffer:
 func (u *update) validate(updt *WebsocketDepthStream, recent *orderbook.Base) (bool, error) {
 	if updt.LastUpdateID <= recent.LastUpdateID {
 		// Drop any event where u is <= lastUpdateId in the snapshot.
+		fmt.Println("+++++ why cannot execute successfull....")
 		return false, nil
 	}
 
