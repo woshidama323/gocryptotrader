@@ -862,6 +862,9 @@ buffer:
 
 // validate checks for correct update alignment
 func (u *update) validate(updt *WebsocketDepthStream, recent *orderbook.Base) (bool, error) {
+
+	fmt.Printf("*++*++*++,[updt:%v] [recent:%v]\n", updt, recent)
+
 	if updt.LastUpdateID <= recent.LastUpdateID {
 		// Drop any event where u is <= lastUpdateId in the snapshot.
 		fmt.Println("+++++ why cannot execute successfull....[updt:", updt.LastUpdateID, "]", " [recent.LastUpdateID:", recent.LastUpdateID, "]")
