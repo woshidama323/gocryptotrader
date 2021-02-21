@@ -647,6 +647,7 @@ func (b *Binance) applyBufferUpdate(pair currency.Pair) error {
 	recent := b.Websocket.Orderbook.GetOrderbook(pair, asset.Spot)
 	fmt.Println(string(colorRed), "first recent...")
 	fmt.Println(recent)
+	fmt.Println(string(colorReset))
 	if recent == nil {
 		return b.obm.fetchBookViaREST(pair)
 	}
@@ -865,7 +866,7 @@ buffer:
 // validate checks for correct update alignment
 func (u *update) validate(updt *WebsocketDepthStream, recent *orderbook.Base) (bool, error) {
 
-	fmt.Printf("*++*++*++,[updt:%+v] [recent:%+v]\n", updt, recent)
+	fmt.Printf("*++*++*++,[updt first:%+v,last:%+v].......[recent:%+v]\n", updt.FirstUpdateID, updt.LastUpdateID, recent.LastUpdateID)
 
 	if updt.LastUpdateID <= recent.LastUpdateID {
 		// Drop any event where u is <= lastUpdateId in the snapshot.
