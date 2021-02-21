@@ -624,13 +624,16 @@ func (b *Binance) ProcessUpdate(cp currency.Pair, a asset.Item, ws *WebsocketDep
 		updateAsk = append(updateAsk, orderbook.Item{Price: p, Amount: a})
 	}
 
-	return b.Websocket.Orderbook.Update(&buffer.Update{
+	res := b.Websocket.Orderbook.Update(&buffer.Update{
 		Bids:     updateBid,
 		Asks:     updateAsk,
 		Pair:     cp,
 		UpdateID: ws.LastUpdateID,
 		Asset:    a,
 	})
+
+	fmt.Println("oerder book.....update.......", res)
+	return res
 }
 
 // applyBufferUpdate applies the buffer to the orderbook or initiates a new
