@@ -876,7 +876,9 @@ func (u *update) validate(updt *WebsocketDepthStream, recent *orderbook.Base) (b
 	if u.initialSync {
 		// The first processed event should have U <= lastUpdateId+1 AND
 		// u >= lastUpdateId+1.
+		fmt.Println("+++++ initialSync")
 		if updt.FirstUpdateID > id || updt.LastUpdateID < id {
+			fmt.Println("+++++ initialSync updt.FirstUpdateID > id || updt.LastUpdateID < id")
 			return false, fmt.Errorf("initial websocket orderbook sync failure for pair %s and asset %s",
 				recent.Pair,
 				asset.Spot)
