@@ -165,7 +165,6 @@ func tradeToSQLData(trades ...Data) ([]tradesql.Data, error) {
 
 // SQLDataToTrade converts sql data to glorious trade data
 func SQLDataToTrade(dbTrades ...tradesql.Data) (result []Data, err error) {
-	// fmt.Println("+++++ SQLDataToTrade:", dbTrades)
 	for i := range dbTrades {
 		var cp currency.Pair
 		cp, err = currency.NewPairFromStrings(dbTrades[i].Base, dbTrades[i].Quote)

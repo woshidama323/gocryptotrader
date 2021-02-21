@@ -872,11 +872,8 @@ buffer:
 // validate checks for correct update alignment
 func (u *update) validate(updt *WebsocketDepthStream, recent *orderbook.Base) (bool, error) {
 
-	fmt.Printf("*++*++*++,[updt first:%+v,last:%+v].......[recent:%+v]\n", updt.FirstUpdateID, updt.LastUpdateID, recent.LastUpdateID)
-
 	if updt.LastUpdateID <= recent.LastUpdateID {
 		// Drop any event where u is <= lastUpdateId in the snapshot.
-		fmt.Println("+++++ why cannot execute successfull....[updt:", updt.LastUpdateID, "]", " [recent.LastUpdateID:", recent.LastUpdateID, "]")
 		return false, nil
 	}
 
@@ -884,7 +881,6 @@ func (u *update) validate(updt *WebsocketDepthStream, recent *orderbook.Base) (b
 	if u.initialSync {
 		// The first processed event should have U <= lastUpdateId+1 AND
 		// u >= lastUpdateId+1.
-		fmt.Println("+++++ initialSync")
 		if updt.FirstUpdateID > id || updt.LastUpdateID < id {
 			fmt.Println("+++++ initialSync updt.FirstUpdateID > id || updt.LastUpdateID < id")
 			return false, fmt.Errorf("initial websocket orderbook sync failure for pair %s and asset %s",
@@ -895,7 +891,6 @@ func (u *update) validate(updt *WebsocketDepthStream, recent *orderbook.Base) (b
 	} else if updt.FirstUpdateID != id {
 		// While listening to the stream, each new event's U should be
 		// equal to the previous event's u+1.
-		fmt.Println("+++++ why cannot execute successfull....[updt:", updt.FirstUpdateID, "]", " [id:", recent.LastUpdateID, "]")
 		return false, fmt.Errorf("websocket orderbook synchronisation failure for pair %s and asset %s",
 			recent.Pair,
 			asset.Spot)

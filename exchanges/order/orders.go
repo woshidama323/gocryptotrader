@@ -3,7 +3,6 @@ package order
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -582,7 +581,6 @@ func SortOrdersBySide(orders *[]Detail, reverse bool) {
 // StringToOrderSide for converting case insensitive order side
 // and returning a real Side
 func StringToOrderSide(side string) (Side, error) {
-	fmt.Println("++ StringToOrderSide:", side, "typeis:", reflect.TypeOf(side), " Buy.String():", Buy.String(), " type is:", reflect.TypeOf(Buy.String()))
 	switch {
 	case strings.EqualFold(side, Buy.String()):
 		return Buy, nil
