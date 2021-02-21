@@ -632,7 +632,7 @@ func (b *Binance) ProcessUpdate(cp currency.Pair, a asset.Item, ws *WebsocketDep
 		Asset:    a,
 	})
 
-	fmt.Println("oerder book.....update.......", res)
+	fmt.Println("oerder book.....update.......", b.Websocket.Orderbook)
 	return res
 }
 
