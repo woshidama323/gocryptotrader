@@ -645,9 +645,7 @@ func (b *Binance) applyBufferUpdate(pair currency.Pair) error {
 	}
 
 	recent := b.Websocket.Orderbook.GetOrderbook(pair, asset.Spot)
-	fmt.Println(string(colorRed), "first recent...")
-	fmt.Println(recent.LastUpdateID)
-	fmt.Println(string(colorReset))
+	fmt.Println("first recent...", recent.LastUpdateID)
 	if recent == nil {
 		return b.obm.fetchBookViaREST(pair)
 	}
