@@ -646,7 +646,7 @@ func (b *Binance) applyBufferUpdate(pair currency.Pair) error {
 
 	recent := b.Websocket.Orderbook.GetOrderbook(pair, asset.Spot)
 	fmt.Println(string(colorRed), "first recent...")
-	fmt.Println(recent)
+	fmt.Println(recent.LastUpdateID)
 	fmt.Println(string(colorReset))
 	if recent == nil {
 		return b.obm.fetchBookViaREST(pair)
@@ -878,7 +878,7 @@ func (u *update) validate(updt *WebsocketDepthStream, recent *orderbook.Base) (b
 	if u.initialSync {
 		// The first processed event should have U <= lastUpdateId+1 AND
 		// u >= lastUpdateId+1.
-		if updt.FirstUpdateID > id && updt.LastUpdateID < id {
+		if updt.FirstUpdateID > id || updt.LastUpdateID < id {
 			return false, fmt.Errorf("initial websocket orderbook sync failure for pair %s and asset %s",
 				recent.Pair,
 				asset.Spot)
