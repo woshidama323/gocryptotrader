@@ -581,6 +581,7 @@ func SortOrdersBySide(orders *[]Detail, reverse bool) {
 // StringToOrderSide for converting case insensitive order side
 // and returning a real Side
 func StringToOrderSide(side string) (Side, error) {
+	fmt.Println("++ StringToOrderSide:", side)
 	switch {
 	case strings.EqualFold(side, Buy.String()):
 		return Buy, nil
