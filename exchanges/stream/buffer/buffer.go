@@ -396,6 +396,8 @@ func (w *Orderbook) GetOrderbook(p currency.Pair, a asset.Item) *orderbook.Base 
 	cpy := *ptr.ob
 	cpy.Asks = append(cpy.Asks[:0:0], cpy.Asks...)
 	cpy.Bids = append(cpy.Bids[:0:0], cpy.Bids...)
+	//fix the bug that recent always stay a fixed value
+	cpy.LastUpdateID = ptr.ob.LastUpdateID
 	return &cpy
 }
 
