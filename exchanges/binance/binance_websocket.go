@@ -637,7 +637,7 @@ func (b *Binance) ProcessUpdate(cp currency.Pair, a asset.Item, ws *WebsocketDep
 		Asset:    a,
 	})
 
-	fmt.Println("oerder book.....update.......", b.Websocket.Orderbook)
+	//fmt.Println("oerder book.....update.......", b.Websocket.Orderbook)
 	return res
 }
 
@@ -653,7 +653,7 @@ func (b *Binance) applyBufferUpdate(pair currency.Pair) error {
 	}
 
 	recent := b.Websocket.Orderbook.GetOrderbook(pair, asset.Spot)
-	fmt.Println("first recent...", recent.LastUpdateID)
+	//fmt.Println("first recent...", recent.LastUpdateID)
 	if recent == nil {
 		return b.obm.fetchBookViaREST(pair)
 	}
